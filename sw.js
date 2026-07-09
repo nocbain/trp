@@ -5,7 +5,7 @@
      manual de "Guardar mapa sin conexión". */
 "use strict";
 
-const SHELL_CACHE = "voyage-shell-v1";
+const SHELL_CACHE = "voyage-shell-v2";
 const TILE_CACHE = "voyage-tiles-v1";
 const SHELL = [
   "./",
@@ -13,6 +13,13 @@ const SHELL = [
   "./css/styles.css",
   "./js/app.js",
   "./manifest.webmanifest",
+  "./vendor/fonts/inter-latin-400-normal.woff2",
+  "./vendor/fonts/inter-latin-500-normal.woff2",
+  "./vendor/fonts/inter-latin-600-normal.woff2",
+  "./vendor/fonts/inter-latin-700-normal.woff2",
+  "./vendor/fonts/fraunces-latin-500-normal.woff2",
+  "./vendor/fonts/fraunces-latin-600-normal.woff2",
+  "./vendor/fonts/fraunces-latin-700-normal.woff2",
   "./vendor/leaflet/leaflet.js",
   "./vendor/leaflet/leaflet.css",
   "./vendor/leaflet/images/marker-icon.png",
@@ -41,7 +48,7 @@ self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;
 
   // Mosaicos del mapa: cache-first, y se guarda lo que se navega.
-  if (url.hostname === "tile.openstreetmap.org") {
+  if (url.hostname.endsWith("basemaps.cartocdn.com") || url.hostname === "tile.openstreetmap.org") {
     e.respondWith(
       caches.open(TILE_CACHE).then(async cache => {
         const hit = await cache.match(e.request);

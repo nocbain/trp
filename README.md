@@ -7,6 +7,7 @@ Aplicación web para organizar viajes al estilo Wanderlog, pero **sin cuentas, s
 ## ✨ Funcionalidades
 
 ### 📅 Itinerario día a día
+- Dos vistas: **lista** (todos los días en columna) y **calendario mensual** (pincha en un día y su detalle aparece al lado).
 - Calendario del viaje con un bloque por día y actividades ordenadas por hora.
 - **Arrastrar y soltar** para reordenar actividades dentro de un día o moverlas entre días.
 - Panel de **💡 Ideas**: guarda sitios sin asignar y arrástralos a un día cuando decidas.
@@ -14,9 +15,10 @@ Aplicación web para organizar viajes al estilo Wanderlog, pero **sin cuentas, s
 - Entre actividad y actividad se muestra el **trayecto estimado** (distancia, minutos y modo).
 
 ### 🗺️ Mapa
+- Cartografía CARTO Voyager: diseño cuidado y **topónimos en alfabeto latino/inglés en todo el mundo**.
 - Todos los puntos numerados y coloreados por día, con la ruta del día dibujada.
 - Filtro por día con chips.
-- **Exportar la ruta a Google Maps** (todas las paradas encadenadas) o a **Amap/高德** — por día o según el filtro activo.
+- **Exportar la ruta a Google Maps** (todas las paradas encadenadas) — por día o según el filtro activo.
 
 ### 📴 Sin conexión
 - Es una **PWA**: la app entera se guarda en caché y se puede instalar en el móvil.
@@ -58,7 +60,7 @@ Y abrir <http://localhost:8080>. Para tener modo sin conexión e instalación co
 1. **＋ Viaje** → nombre y fechas: se crea un bloque por día.
 2. **＋ Añadir actividad** → título, categoría, hora, duración, coste y lugar (busca con 🔎, pega coordenadas `lat, lng` o haz clic en el minimapa).
 3. Arrastra las tarjetas para reorganizar; el medidor de carga se recalcula al instante.
-4. En **Mapa**, filtra por día y ábrelo en Google Maps o Amap.
+4. En **Mapa**, filtra por día y abre la ruta en Google Maps.
 5. Antes de salir: menú **⋯ → Guardar mapa sin conexión** y repasa **Antes del viaje** y **Equipaje**.
 
 Al abrirla por primera vez se carga un viaje de ejemplo (Kioto) para que veas todo en acción; puedes eliminarlo desde el menú ⋯.
@@ -67,7 +69,8 @@ Al abrirla por primera vez se carga un viaje de ejemplo (Kioto) para que veas to
 
 - HTML/CSS/JS vanilla, sin build ni dependencias de red en tiempo de ejecución.
 - [Leaflet 1.9.4](https://leafletjs.com/) incluido en `vendor/` (funciona offline).
-- Mosaicos de [OpenStreetMap](https://www.openstreetmap.org/copyright) y geocodificación con [Nominatim](https://nominatim.org/) (solo al buscar lugares).
+- Tipografías [Inter](https://rsms.me/inter/) y [Fraunces](https://fraunces.undercase.xyz/) servidas en local.
+- Mosaicos [CARTO Voyager](https://carto.com/attributions) (datos © OpenStreetMap) y geocodificación con [Nominatim](https://nominatim.org/) (solo al buscar lugares).
 - Service worker con caché del shell y de mosaicos; manifest PWA.
 
 ## 📁 Estructura
@@ -84,5 +87,4 @@ vendor/leaflet/       Leaflet embebido
 ## ⚠️ Notas
 
 - La estimación de trayectos es orientativa (línea recta × 1,3, a pie 4,5 km/h, transporte ~22 km/h): sirve para valorar la carga del día, no sustituye al navegador.
-- La exportación a Amap admite un único punto intermedio (limitación de su URL pública); Google Maps admite la ruta completa.
-- Respeta la [política de uso de los mosaicos de OSM](https://operations.osmfoundation.org/policies/tiles/): la descarga offline está limitada a ~1600 mosaicos por viaje.
+- Los mosaicos de CARTO son de uso gratuito con atribución para proyectos personales; la descarga offline está limitada a ~1600 mosaicos por viaje para un uso razonable.

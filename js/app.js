@@ -8,6 +8,7 @@
 const $  = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+const ic = name => `<svg class="ic" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 function toast(msg, ms = 3200) {
@@ -64,6 +65,9 @@ const STORE_KEY = "voyage.state.v1";
 let state = null;
 let ui = {
   tab: "itinerary",
+  itinView: "list",      // "list" | "cal"
+  calCursor: 0,          // índice de mes dentro de los meses del viaje
+  selectedDayIdx: 0,     // día seleccionado en la vista calendario
   mapDayFilter: "all",
   editingId: null,   // id de actividad en edición
   editingLoc: null,  // {lat,lng,place} temporal del modal
@@ -227,11 +231,11 @@ function activityCardHTML(it, dayIdx, itemIdx) {
   const cat = CATS[it.cat] || CATS.other;
   const geo = it.lat != null && it.lng != null;
   const meta = [];
-  if (it.duration) meta.push(`⏱ ${fmtDur(it.duration)}`);
-  if (it.cost) meta.push(`💶 ${fmtMoney(it.cost)}`);
+  if (it.duration) meta.push(`<span>${ic("clock")} ${fmtDur(it.duration)}</span>`);
+  if (it.cost) meta.push(`<span>${ic("euro")} ${fmtMoney(it.cost)}</span>`);
   meta.push(geo
-    ? `<span class="geo-ok">📍 ${esc((it.place || "").split(",")[0] || "en el mapa")}</span>`
-    : `<span class="geo-missing">📍 sin ubicación</span>`);
+    ? `<span class="geo-ok">${ic("pin")} ${esc((it.place || "").split(",")[0] || "en el mapa")}</span>`
+    : `<span class="geo-missing">${ic("pin")} sin ubicación</span>`);
   const bookChip = it.booking
     ? `<span class="a-booking-chip ${it.booking.confirmed ? "" : "pending"}">${it.booking.confirmed ? "RESERVADO" : "PENDIENTE"}</span>` : "";
   return `
@@ -249,51 +253,131 @@ function activityCardHTML(it, dayIdx, itemIdx) {
   </article>`;
 }
 
+function dayCardHTML(di) {
+  const t = trip();
+  const day = t.days[di];
+  const st = dayStats(day);
+  const color = DAY_COLORS[di % DAY_COLORS.length];
+  const itemsHTML = day.items.map((it, ii) => {
+    const leg = st.legs[ii];
+    const legHTML = leg
+      ? `<div class="leg">${ic("route")} ${leg.mode} ${leg.km.toFixed(1)} km · ~${Math.round(leg.min)} min ${leg.label}</div>` : "";
+    return legHTML + activityCardHTML(it, di, ii);
+  }).join("");
+  const loadDetail = day.items.length
+    ? `${fmtDur(Math.round(st.activeMin))} de actividades · ${fmtDur(Math.round(st.travelMin)) || "0 min"} de trayectos · ${st.km.toFixed(1)} km`
+    : "Añade actividades o arrastra ideas aquí";
+  return `
+  <section class="day-card" data-day="${di}">
+    <header class="day-head">
+      <span class="day-num" style="background:${color}">${di + 1}</span>
+      <div class="day-title">
+        <h3>${fmtDate(day.date)}</h3>
+        <span class="small">${loadDetail}</span>
+      </div>
+      <div class="day-load" title="Estimación: tiempo de actividades + trayectos">
+        <span class="load-meter"><i class="load-${st.rating.cls}-bar" style="width:${st.pct}%"></i></span>
+        <span class="load-pill load-${st.rating.cls}">${st.rating.label}${day.items.length ? " · " + (st.totalMin / 60).toFixed(1) + " h" : ""}</span>
+      </div>
+      <div class="day-route-btns">
+        <button class="btn btn-icon" data-act="add-to-day" data-day="${di}" title="Añadir actividad a este día">${ic("plus")}</button>
+        <button class="btn btn-soft" data-act="gmaps-day" data-day="${di}" title="Abrir ruta del día en Google Maps">${ic("external")} Ruta</button>
+      </div>
+    </header>
+    <div class="day-body drop-zone" data-day="${di}">
+      ${itemsHTML || '<div class="day-empty">Día libre — arrastra actividades aquí</div>'}
+    </div>
+  </section>`;
+}
+
 function renderItinerary() {
   const t = trip();
-  const cont = $("#daysContainer");
-  cont.innerHTML = t.days.map((day, di) => {
-    const st = dayStats(day);
-    const color = DAY_COLORS[di % DAY_COLORS.length];
-    const itemsHTML = day.items.map((it, ii) => {
-      const leg = st.legs[ii];
-      const legHTML = leg
-        ? `<div class="leg">${leg.mode} ${leg.km.toFixed(1)} km · ~${Math.round(leg.min)} min ${leg.label}</div>` : "";
-      return legHTML + activityCardHTML(it, di, ii);
-    }).join("");
-    const loadDetail = day.items.length
-      ? `${fmtDur(Math.round(st.activeMin))} de actividades · ${fmtDur(Math.round(st.travelMin)) || "0 min"} de trayectos · ${st.km.toFixed(1)} km`
-      : "Añade actividades o arrastra ideas aquí";
-    return `
-    <section class="day-card" data-day="${di}">
-      <header class="day-head">
-        <span class="day-num" style="background:${color}">${di + 1}</span>
-        <div class="day-title">
-          <h3>${fmtDate(day.date)}</h3>
-          <span class="small">${loadDetail}</span>
-        </div>
-        <div class="day-load" title="Estimación: tiempo de actividades + trayectos">
-          <span class="load-meter"><i class="load-${st.rating.cls}-bar" style="width:${st.pct}%"></i></span>
-          <span class="load-pill load-${st.rating.cls}">${st.rating.label}${day.items.length ? " · " + (st.totalMin / 60).toFixed(1) + " h" : ""}</span>
-        </div>
-        <div class="day-route-btns">
-          <button class="btn btn-ghost" data-act="add-to-day" data-day="${di}" title="Añadir actividad a este día">＋</button>
-          <button class="btn btn-soft" data-act="gmaps-day" data-day="${di}" title="Abrir ruta del día en Google Maps">G·Maps</button>
-          <button class="btn btn-soft" data-act="amap-day" data-day="${di}" title="Abrir ruta del día en Amap">高德</button>
-        </div>
-      </header>
-      <div class="day-body drop-zone" data-day="${di}">
-        ${itemsHTML || '<div class="day-empty">Día libre — arrastra actividades aquí</div>'}
-      </div>
-    </section>`;
-  }).join("");
+  $("#listWrap").hidden = ui.itinView !== "list";
+  $("#calWrap").hidden = ui.itinView !== "cal";
+  $("#btnViewList").classList.toggle("active", ui.itinView === "list");
+  $("#btnViewCal").classList.toggle("active", ui.itinView === "cal");
 
-  $("#ideasList").innerHTML = t.ideas.length
-    ? t.ideas.map((it, ii) => activityCardHTML(it, "ideas", ii)).join("")
-    : '<div class="day-empty">Sin ideas pendientes</div>';
-
+  if (ui.itinView === "list") {
+    $("#daysContainer").innerHTML = t.days.map((_, di) => dayCardHTML(di)).join("");
+    $("#ideasList").innerHTML = t.ideas.length
+      ? t.ideas.map((it, ii) => activityCardHTML(it, "ideas", ii)).join("")
+      : '<div class="day-empty">Sin ideas pendientes</div>';
+  } else {
+    renderCalendar();
+  }
   bindDnD();
   bindActivityClicks();
+}
+
+/* ── Vista de calendario mensual ─────────────────────────── */
+function tripMonths() {
+  const t = trip();
+  const [y0, m0] = t.start.split("-").map(Number);
+  const [y1, m1] = t.end.split("-").map(Number);
+  const months = [];
+  let y = y0, m = m0;
+  while (y < y1 || (y === y1 && m <= m1)) {
+    months.push({ y, m });
+    m++; if (m > 12) { m = 1; y++; }
+  }
+  return months;
+}
+
+function renderCalendar() {
+  const t = trip();
+  const months = tripMonths();
+  ui.calCursor = Math.max(0, Math.min(ui.calCursor, months.length - 1));
+  ui.selectedDayIdx = Math.max(0, Math.min(ui.selectedDayIdx ?? 0, t.days.length - 1));
+  const { y, m } = months[ui.calCursor];
+
+  $("#calMonthLabel").textContent = new Date(y, m - 1, 1)
+    .toLocaleDateString("es-ES", { month: "long", year: "numeric" });
+  $("#btnCalPrev").disabled = ui.calCursor === 0;
+  $("#btnCalNext").disabled = ui.calCursor === months.length - 1;
+
+  const dayIdxByDate = Object.fromEntries(t.days.map((d, i) => [d.date, i]));
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const firstWeekday = (new Date(y, m - 1, 1).getDay() + 6) % 7; // lunes = 0
+
+  const cells = [];
+  // huecos del mes anterior
+  const prevDays = new Date(y, m - 1, 0).getDate();
+  for (let i = firstWeekday - 1; i >= 0; i--)
+    cells.push(`<div class="cal-cell other-month"><span class="cal-daynum">${prevDays - i}</span></div>`);
+  // días del mes
+  for (let d = 1; d <= daysInMonth; d++) {
+    const iso = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const di = dayIdxByDate[iso];
+    if (di === undefined) {
+      cells.push(`<div class="cal-cell"><span class="cal-daynum">${d}</span></div>`);
+    } else {
+      const day = t.days[di];
+      const st = dayStats(day);
+      const color = DAY_COLORS[di % DAY_COLORS.length];
+      const selected = di === ui.selectedDayIdx;
+      cells.push(`
+      <button type="button" class="cal-cell in-trip drop-zone ${selected ? "selected" : ""}" data-day="${di}" data-cal-day="${di}" title="Día ${di + 1} · ${fmtDate(iso)}">
+        <span class="cal-daynum">${d}</span>
+        <span class="cal-daylabel">Día ${di + 1}</span>
+        ${day.items.length ? `<span class="cal-count" style="background:${color}">${day.items.length}</span>` : ""}
+        <span class="cal-load"><i class="load-${st.rating.cls}-bar" style="width:${st.pct}%"></i></span>
+      </button>`);
+    }
+  }
+  // huecos del mes siguiente hasta completar la última semana
+  const trailing = (7 - (cells.length % 7)) % 7;
+  for (let d = 1; d <= trailing; d++)
+    cells.push(`<div class="cal-cell other-month"><span class="cal-daynum">${d}</span></div>`);
+
+  $("#calGrid").innerHTML = cells.join("");
+  $$("#calGrid [data-cal-day]").forEach(c => c.addEventListener("click", () => {
+    ui.selectedDayIdx = Number(c.dataset.calDay);
+    renderItinerary();
+  }));
+
+  $("#calDetail").innerHTML = t.days.length
+    ? dayCardHTML(ui.selectedDayIdx)
+    : `<div class="cal-detail-empty">Este viaje no tiene días.</div>`;
 }
 
 /* ── Drag & drop ─────────────────────────────────────────── */
@@ -320,12 +404,18 @@ function bindDnD() {
       zone.classList.remove("drag-over");
       if (!dragData) return;
       const targetKey = zone.dataset.day;
-      // índice de inserción según posición vertical del cursor
-      const cards = $$(".activity", zone).filter(c => c.dataset.id !== dragData.id);
-      let insertIdx = cards.length;
-      for (let i = 0; i < cards.length; i++) {
-        const r = cards[i].getBoundingClientRect();
-        if (e.clientY < r.top + r.height / 2) { insertIdx = i; break; }
+      let insertIdx;
+      if (zone.classList.contains("cal-cell")) {
+        // celda del calendario: se añade al final del día
+        insertIdx = listFor(targetKey).length;
+      } else {
+        // índice de inserción según posición vertical del cursor
+        const cards = $$(".activity", zone).filter(c => c.dataset.id !== dragData.id);
+        insertIdx = cards.length;
+        for (let i = 0; i < cards.length; i++) {
+          const r = cards[i].getBoundingClientRect();
+          if (e.clientY < r.top + r.height / 2) { insertIdx = i; break; }
+        }
       }
       moveActivity(dragData.id, targetKey, insertIdx);
     });
@@ -360,8 +450,7 @@ function bindActivityClicks() {
   $$(".activity").forEach(card => {
     card.addEventListener("click", () => openActivityModal(card.dataset.id));
   });
-  $$("[data-act='gmaps-day']").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); exportDay(Number(b.dataset.day), "gmaps"); }));
-  $$("[data-act='amap-day']").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); exportDay(Number(b.dataset.day), "amap"); }));
+  $$("[data-act='gmaps-day']").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); openGmaps(routePoints(Number(b.dataset.day))); }));
   $$("[data-act='add-to-day']").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); openActivityModal(null, { day: b.dataset.day }); }));
 }
 
@@ -386,10 +475,10 @@ function renderBookings() {
         ${it.booking.code ? `<span class="booking-code">${esc(it.booking.code)}</span>` : ""}
       </div>
       <div class="booking-meta">
-        <span>${it.booking.confirmed ? "✅ Confirmada" : "⏳ Pendiente de confirmar"}</span>
-        ${it.booking.provider ? `<span>🏢 ${esc(it.booking.provider)}</span>` : ""}
-        ${when ? `<span>📅 Día ${dayIdx + 1} · ${fmtDate(when, { day: "numeric", month: "short" })}${it.time ? " · " + esc(it.time) : ""}</span>` : "<span>📅 Sin fecha asignada</span>"}
-        ${it.cost ? `<span>💶 ${fmtMoney(it.cost)}</span>` : ""}
+        <span>${it.booking.confirmed ? ic("check") + " Confirmada" : ic("clock") + " Pendiente de confirmar"}</span>
+        ${it.booking.provider ? `<span>${esc(it.booking.provider)}</span>` : ""}
+        ${when ? `<span>${ic("calendar")} Día ${dayIdx + 1} · ${fmtDate(when, { day: "numeric", month: "short" })}${it.time ? " · " + esc(it.time) : ""}</span>` : `<span>${ic("calendar")} Sin fecha asignada</span>`}
+        ${it.cost ? `<span>${ic("euro")} ${fmtMoney(it.cost)}</span>` : ""}
       </div>
     </div>`;
   }).join("") : `<div class="empty-state">Aún no hay reservas. Marca «Es una reserva» en cualquier actividad, o añade una desde aquí.</div>`;
@@ -408,7 +497,7 @@ function renderPrep() {
       <input type="checkbox" ${p.done ? "checked" : ""} aria-label="Completado">
       <span class="txt">${esc(p.text)}</span>
       ${p.due ? `<span class="due">antes del ${fmtDate(p.due, { day: "numeric", month: "short" })}</span>` : ""}
-      <button class="btn btn-ghost del" title="Eliminar">🗑️</button>
+      <button class="btn btn-icon del" title="Eliminar">${ic("trash")}</button>
     </li>`).join("")
     : `<div class="empty-state">Sin tareas previas. Añade visados, seguro, cambio de moneda…</div>`;
   $$("#prepList .check-item").forEach(li => {
@@ -442,7 +531,7 @@ function renderPacking() {
         <li class="check-item ${p.done ? "done" : ""}" data-id="${p.id}">
           <input type="checkbox" ${p.done ? "checked" : ""} aria-label="Completado">
           <span class="txt">${esc(p.text)}</span>
-          <button class="btn btn-ghost del" title="Eliminar">🗑️</button>
+          <button class="btn btn-icon del" title="Eliminar">${ic("trash")}</button>
         </li>`).join("")}
       </ul>
     </div>`).join("")
@@ -488,8 +577,11 @@ function renderBudget() {
 }
 
 /* ── Mapa ────────────────────────────────────────────────── */
-const TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+/* CARTO Voyager: cartografía cuidada y topónimos en alfabeto latino/inglés
+   en todo el mundo. Se fija un único subdominio para que los mosaicos que
+   se navegan y los que se descargan para offline compartan caché. */
+const TILE_URL = "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png";
+const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
 function geoItems(dayFilter = "all") {
   const t = trip();
@@ -575,26 +667,6 @@ function openGmaps(pts) {
   // el formato /dir/ admite muchas paradas encadenadas
   const url = "https://www.google.com/maps/dir/" + pts.map(p => `${p.lat},${p.lng}`).join("/");
   window.open(url, "_blank");
-}
-function openAmap(pts) {
-  if (pts.length < 1) return toast("No hay puntos con ubicación en esa selección.");
-  const enc = s => encodeURIComponent((s || "").slice(0, 40));
-  if (pts.length === 1) {
-    window.open(`https://uri.amap.com/marker?position=${pts[0].lng},${pts[0].lat}&name=${enc(pts[0].name)}&coordinate=wgs84&callnative=0`, "_blank");
-    return;
-  }
-  const from = pts[0], to = pts[pts.length - 1];
-  let url = `https://uri.amap.com/navigation?from=${from.lng},${from.lat},${enc(from.name)}&to=${to.lng},${to.lat},${enc(to.name)}&mode=car&coordinate=wgs84&callnative=0`;
-  if (pts.length > 2) {
-    const mid = pts[Math.floor(pts.length / 2)];
-    url += `&via=${mid.lng},${mid.lat},${enc(mid.name)}`;
-    if (pts.length > 3) toast("Amap solo admite un punto intermedio: se usa inicio → punto medio → fin.");
-  }
-  window.open(url, "_blank");
-}
-function exportDay(dayIdx, target) {
-  const pts = routePoints(dayIdx);
-  if (target === "gmaps") openGmaps(pts); else openAmap(pts);
 }
 
 /* ── Modal de actividad ──────────────────────────────────── */
@@ -702,7 +774,7 @@ async function geocode() {
       { headers: { "Accept": "application/json" } });
     const data = await res.json();
     if (!data.length) { box.innerHTML = "<button disabled>Sin resultados. Prueba con «lugar, ciudad».</button>"; return; }
-    box.innerHTML = data.map((r, i) => `<button type="button" data-i="${i}">📍 ${esc(r.display_name)}</button>`).join("");
+    box.innerHTML = data.map((r, i) => `<button type="button" data-i="${i}">${ic("pin")} ${esc(r.display_name)}</button>`).join("");
     $$("button[data-i]", box).forEach(b => b.addEventListener("click", () => {
       const r = data[Number(b.dataset.i)];
       setEditingLoc(Number(r.lat), Number(r.lon), r.display_name.split(",").slice(0, 2).join(","));
@@ -918,8 +990,18 @@ function bindGlobal() {
   // pestañas
   $$(".tab").forEach(b => b.addEventListener("click", () => switchTab(b.dataset.tab)));
 
+  // vista lista / calendario
+  $("#btnViewList").addEventListener("click", () => { ui.itinView = "list"; renderItinerary(); });
+  $("#btnViewCal").addEventListener("click", () => { ui.itinView = "cal"; renderItinerary(); });
+  $("#btnCalPrev").addEventListener("click", () => { ui.calCursor--; renderItinerary(); });
+  $("#btnCalNext").addEventListener("click", () => { ui.calCursor++; renderItinerary(); });
+
   // selector y gestión de viajes
-  $("#tripSelect").addEventListener("change", e => { state.activeTripId = e.target.value; save(); renderAll(); });
+  $("#tripSelect").addEventListener("change", e => {
+    state.activeTripId = e.target.value;
+    ui.calCursor = 0; ui.selectedDayIdx = 0; ui.mapDayFilter = "all";
+    save(); renderAll();
+  });
   $("#btnNewTrip").addEventListener("click", () => openTripModal("new"));
   $("#btnEditTrip").addEventListener("click", () => openTripModal("edit"));
   $("#btnDeleteTrip").addEventListener("click", () => {
@@ -948,7 +1030,8 @@ function bindGlobal() {
   $("#btnStartOffline").addEventListener("click", downloadTiles);
 
   // actividades
-  $("#btnAddActivity").addEventListener("click", () => openActivityModal(null, { day: "0" }));
+  $("#btnAddActivity").addEventListener("click", () =>
+    openActivityModal(null, { day: ui.itinView === "cal" ? String(ui.selectedDayIdx) : "0" }));
   $("#btnAddIdea").addEventListener("click", () => openActivityModal(null, { day: "ideas" }));
   $("#btnAddBooking").addEventListener("click", () => openActivityModal(null, { day: "ideas", booking: true }));
   $("#activityForm").addEventListener("submit", saveActivityFromForm);
@@ -974,7 +1057,6 @@ function bindGlobal() {
 
   // exportar ruta (vista mapa: respeta el filtro de día activo)
   $("#btnExportGmaps").addEventListener("click", () => openGmaps(routePoints()));
-  $("#btnExportAmap").addEventListener("click", () => openAmap(routePoints()));
 
   // notas
   let notesTimer;

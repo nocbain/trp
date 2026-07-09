@@ -3,55 +3,91 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#0d5c63">
-<meta name="description" content="Voyage — planificador de itinerarios de viaje: calendario día a día, mapa, exportación a Google Maps y Amap, y modo sin conexión.">
+<meta name="theme-color" content="#0b4f55">
+<meta name="description" content="Voyage — planificador de itinerarios de viaje: calendario día a día, mapa, exportación a Google Maps y modo sin conexión.">
 <title>Voyage · Planificador de viajes</title>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%AD%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230b4f55'/%3E%3Ctext x='50' y='70' font-size='54' text-anchor='middle'%3E%F0%9F%A7%AD%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
 
+<!-- ── Sprite de iconos (Lucide, stroke) ─────────────────── -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <defs>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24"><path d="M14.1 6.1 9.9 4 4 6.5a1 1 0 0 0-.6.9v11.1a1 1 0 0 0 1.4.9l5.1-2.4 4.2 2.1 5.9-2.5a1 1 0 0 0 .6-.9V4.6a1 1 0 0 0-1.4-.9z"/><path d="M9.9 4v13M14.1 6.1v13"/></symbol>
+    <symbol id="i-ticket" viewBox="0 0 24 24"><path d="M2 9a3 3 0 0 1 0 6v3a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1v-3a3 3 0 0 1 0-6V6a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1z"/><path d="M13 5v2M13 17v2M13 11v2"/></symbol>
+    <symbol id="i-clipboard" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></symbol>
+    <symbol id="i-backpack" viewBox="0 0 24 24"><path d="M4 10a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M8 21v-5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v5"/><path d="M8 10h8"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2H5"/><circle cx="16" cy="13.5" r="1.4"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6M14 11v6"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="i-printer" viewBox="0 0 24 24"><path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 8 5-5 5 5"/><path d="M12 3v12"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+    <symbol id="i-euro" viewBox="0 0 24 24"><path d="M4 10h12M4 14h9"/><path d="M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/></symbol>
+    <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5.76.76 1.23 1.52 1.41 2.5"/></symbol>
+    <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 17v4M17 19h4"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 8-2.4 5.6L8 16l2.4-5.6z"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M15 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10z"/><path d="M15 21v-4a2 2 0 0 1 2-2h4"/></symbol>
+    <symbol id="i-wifi-off" viewBox="0 0 24 24"><path d="M12 20h.01"/><path d="M8.5 16.4a5 5 0 0 1 7 0"/><path d="M5 12.9a10 10 0 0 1 5.2-2.7M15 10.4a10 10 0 0 1 4 2.5"/><path d="M2 2l20 20"/></symbol>
+  </defs>
+</svg>
+
 <header class="topbar">
   <div class="brand">
-    <span class="brand-mark">🧭</span>
+    <span class="brand-mark"><svg class="ic"><use href="#i-compass"/></svg></span>
     <div class="brand-text">
       <h1>Voyage</h1>
-      <span class="brand-sub">Tu viaje, a tu manera</span>
+      <span class="brand-sub">Planificador de viajes</span>
     </div>
   </div>
 
   <div class="trip-switch">
     <select id="tripSelect" aria-label="Seleccionar viaje"></select>
-    <button class="btn btn-ghost" id="btnEditTrip" title="Editar viaje">✏️</button>
-    <button class="btn btn-ghost" id="btnNewTrip" title="Nuevo viaje">＋ Viaje</button>
+    <button class="btn btn-icon" id="btnEditTrip" title="Editar viaje"><svg class="ic"><use href="#i-pencil"/></svg></button>
+    <button class="btn btn-outline" id="btnNewTrip"><svg class="ic"><use href="#i-plus"/></svg><span>Viaje</span></button>
   </div>
 
   <div class="topbar-actions">
     <span id="netStatus" class="net-pill" title="Estado de conexión"></span>
     <div class="menu-wrap">
-      <button class="btn btn-ghost" id="btnMore" aria-haspopup="true" aria-expanded="false">⋯</button>
+      <button class="btn btn-icon" id="btnMore" aria-haspopup="true" title="Más opciones"><svg class="ic"><use href="#i-more"/></svg></button>
       <div class="menu" id="moreMenu" hidden>
-        <button id="btnExportJson">⬇️ Exportar copia (JSON)</button>
-        <button id="btnImportJson">⬆️ Importar copia (JSON)</button>
-        <button id="btnPrint">🖨️ Imprimir / PDF</button>
+        <button id="btnExportJson"><svg class="ic"><use href="#i-download"/></svg> Exportar copia (JSON)</button>
+        <button id="btnImportJson"><svg class="ic"><use href="#i-upload"/></svg> Importar copia (JSON)</button>
+        <button id="btnPrint"><svg class="ic"><use href="#i-printer"/></svg> Imprimir / PDF</button>
         <hr>
-        <button id="btnOfflineMap">🗺️ Guardar mapa sin conexión</button>
+        <button id="btnOfflineMap"><svg class="ic"><use href="#i-wifi-off"/></svg> Guardar mapa sin conexión</button>
         <hr>
-        <button id="btnDeleteTrip" class="danger">🗑️ Eliminar viaje</button>
+        <button id="btnDeleteTrip" class="danger"><svg class="ic"><use href="#i-trash"/></svg> Eliminar viaje</button>
       </div>
     </div>
   </div>
 </header>
 
 <nav class="tabs" role="tablist" aria-label="Secciones">
-  <button class="tab active" data-tab="itinerary" role="tab">📅 <span>Itinerario</span></button>
-  <button class="tab" data-tab="map" role="tab">🗺️ <span>Mapa</span></button>
-  <button class="tab" data-tab="bookings" role="tab">🎫 <span>Reservas</span> <em class="tab-badge" id="badgeBookings"></em></button>
-  <button class="tab" data-tab="prep" role="tab">📋 <span>Antes del viaje</span> <em class="tab-badge" id="badgePrep"></em></button>
-  <button class="tab" data-tab="packing" role="tab">🎒 <span>Equipaje</span> <em class="tab-badge" id="badgePacking"></em></button>
-  <button class="tab" data-tab="budget" role="tab">💶 <span>Presupuesto</span></button>
+  <button class="tab active" data-tab="itinerary" role="tab"><svg class="ic"><use href="#i-calendar"/></svg><span>Itinerario</span></button>
+  <button class="tab" data-tab="map" role="tab"><svg class="ic"><use href="#i-map"/></svg><span>Mapa</span></button>
+  <button class="tab" data-tab="bookings" role="tab"><svg class="ic"><use href="#i-ticket"/></svg><span>Reservas</span><em class="tab-badge" id="badgeBookings"></em></button>
+  <button class="tab" data-tab="prep" role="tab"><svg class="ic"><use href="#i-clipboard"/></svg><span>Antes del viaje</span><em class="tab-badge" id="badgePrep"></em></button>
+  <button class="tab" data-tab="packing" role="tab"><svg class="ic"><use href="#i-backpack"/></svg><span>Equipaje</span><em class="tab-badge" id="badgePacking"></em></button>
+  <button class="tab" data-tab="budget" role="tab"><svg class="ic"><use href="#i-wallet"/></svg><span>Presupuesto</span></button>
 </nav>
 
 <main>
@@ -64,19 +100,40 @@
         <p class="muted" id="tripDates"></p>
       </div>
       <div class="view-head-actions">
-        <button class="btn btn-primary" id="btnAddActivity">＋ Añadir actividad</button>
+        <div class="segmented" role="group" aria-label="Modo de vista">
+          <button id="btnViewList" class="seg active" title="Vista de lista"><svg class="ic"><use href="#i-list"/></svg><span>Lista</span></button>
+          <button id="btnViewCal" class="seg" title="Vista de calendario"><svg class="ic"><use href="#i-grid"/></svg><span>Calendario</span></button>
+        </div>
+        <button class="btn btn-primary" id="btnAddActivity"><svg class="ic"><use href="#i-plus"/></svg><span>Actividad</span></button>
       </div>
     </div>
-    <div class="itinerary-layout">
+
+    <!-- vista lista -->
+    <div id="listWrap" class="itinerary-layout">
       <div class="days" id="daysContainer"></div>
       <aside class="ideas-panel">
         <div class="ideas-head">
-          <h3>💡 Ideas · sin asignar</h3>
+          <h3><svg class="ic"><use href="#i-bulb"/></svg> Ideas · sin asignar</h3>
           <p class="muted small">Arrastra a un día cuando decidas cuándo ir.</p>
         </div>
         <div class="ideas-list drop-zone" id="ideasList" data-day="ideas"></div>
-        <button class="btn btn-soft w-full" id="btnAddIdea">＋ Añadir idea</button>
+        <button class="btn btn-soft w-full" id="btnAddIdea"><svg class="ic"><use href="#i-plus"/></svg><span>Añadir idea</span></button>
       </aside>
+    </div>
+
+    <!-- vista calendario -->
+    <div id="calWrap" class="cal-layout" hidden>
+      <div class="cal-panel">
+        <div class="cal-nav">
+          <button class="btn btn-icon" id="btnCalPrev" title="Mes anterior"><svg class="ic"><use href="#i-left"/></svg></button>
+          <h3 id="calMonthLabel"></h3>
+          <button class="btn btn-icon" id="btnCalNext" title="Mes siguiente"><svg class="ic"><use href="#i-right"/></svg></button>
+        </div>
+        <div class="cal-weekdays"><span>lun</span><span>mar</span><span>mié</span><span>jue</span><span>vie</span><span>sáb</span><span>dom</span></div>
+        <div class="cal-grid" id="calGrid"></div>
+        <p class="muted small cal-hint">Pincha en un día para ver su detalle. También puedes arrastrar actividades de un día a otro directamente sobre el calendario.</p>
+      </div>
+      <div class="cal-detail" id="calDetail"></div>
     </div>
   </section>
 
@@ -85,12 +142,11 @@
     <div class="map-toolbar">
       <div class="chips" id="mapDayChips"></div>
       <div class="map-actions">
-        <button class="btn btn-soft" id="btnExportGmaps">📍 Ruta en Google Maps</button>
-        <button class="btn btn-soft" id="btnExportAmap">📍 Ruta en Amap 高德</button>
+        <button class="btn btn-soft" id="btnExportGmaps"><svg class="ic"><use href="#i-external"/></svg><span>Abrir ruta en Google Maps</span></button>
       </div>
     </div>
     <div id="map" role="application" aria-label="Mapa del itinerario"></div>
-    <p class="map-hint muted small">Consejo: pulsa «Guardar mapa sin conexión» en el menú ⋯ para poder consultar esta zona sin internet.</p>
+    <p class="map-hint muted small">Consejo: usa «Guardar mapa sin conexión» en el menú de opciones para poder consultar esta zona sin internet.</p>
   </section>
 
   <!-- ══════════ RESERVAS ══════════ -->
@@ -100,7 +156,7 @@
         <h2>Reservas</h2>
         <p class="muted">Vuelos, hoteles, trenes, entradas y restaurantes con reserva.</p>
       </div>
-      <button class="btn btn-primary" id="btnAddBooking">＋ Añadir reserva</button>
+      <button class="btn btn-primary" id="btnAddBooking"><svg class="ic"><use href="#i-plus"/></svg><span>Reserva</span></button>
     </div>
     <div id="bookingsList" class="bookings-list"></div>
   </section>
@@ -112,12 +168,12 @@
         <h2>Antes del viaje</h2>
         <p class="muted">Trámites y cosas a tener en cuenta: visados, seguros, moneda, vacunas…</p>
       </div>
-      <button class="btn btn-primary" id="btnAddPrep">＋ Añadir tarea</button>
+      <button class="btn btn-primary" id="btnAddPrep"><svg class="ic"><use href="#i-plus"/></svg><span>Tarea</span></button>
     </div>
     <div class="progress-line"><div class="progress-fill" id="prepProgress"></div></div>
     <ul class="check-list" id="prepList"></ul>
     <div class="notes-block">
-      <h3>📝 Notas del viaje</h3>
+      <h3><svg class="ic"><use href="#i-note"/></svg> Notas del viaje</h3>
       <textarea id="tripNotes" placeholder="Apunta aquí cualquier cosa: frases útiles, teléfonos de emergencia, direcciones del alojamiento…"></textarea>
     </div>
   </section>
@@ -130,8 +186,8 @@
         <p class="muted">Todo lo que hay que pillar antes de salir por la puerta.</p>
       </div>
       <div class="view-head-actions">
-        <button class="btn btn-soft" id="btnPackingTemplate">✨ Añadir básicos</button>
-        <button class="btn btn-primary" id="btnAddPacking">＋ Añadir</button>
+        <button class="btn btn-soft" id="btnPackingTemplate"><svg class="ic"><use href="#i-sparkles"/></svg><span>Añadir básicos</span></button>
+        <button class="btn btn-primary" id="btnAddPacking"><svg class="ic"><use href="#i-plus"/></svg><span>Añadir</span></button>
       </div>
     </div>
     <div class="progress-line"><div class="progress-fill" id="packingProgress"></div></div>
@@ -157,7 +213,7 @@
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="activityModalTitle">
     <div class="modal-head">
       <h3 id="activityModalTitle">Nueva actividad</h3>
-      <button class="btn btn-ghost" data-close>✕</button>
+      <button class="btn btn-icon" data-close title="Cerrar"><svg class="ic"><use href="#i-x"/></svg></button>
     </div>
     <form id="activityForm" class="modal-body">
       <label class="field">
@@ -195,7 +251,7 @@
         <span>Lugar</span>
         <div class="geo-row">
           <input type="text" id="fPlace" placeholder="Busca una dirección o lugar…">
-          <button type="button" class="btn btn-soft" id="btnGeocode">🔎</button>
+          <button type="button" class="btn btn-soft" id="btnGeocode" title="Buscar"><svg class="ic"><use href="#i-search"/></svg></button>
         </div>
         <div id="geoResults" class="geo-results" hidden></div>
         <p class="muted small">También puedes fijar el punto haciendo clic en el minimapa, o pegar coordenadas «lat, lng».</p>
@@ -211,7 +267,7 @@
       <fieldset class="booking-fieldset">
         <label class="switch-row">
           <input type="checkbox" id="fIsBooking">
-          <span>🎫 Es una reserva</span>
+          <span><svg class="ic"><use href="#i-ticket"/></svg> Es una reserva</span>
         </label>
         <div id="bookingFields" class="field-row" hidden>
           <label class="field">
@@ -244,7 +300,7 @@
   <div class="modal modal-sm" role="dialog" aria-modal="true">
     <div class="modal-head">
       <h3 id="tripModalTitle">Nuevo viaje</h3>
-      <button class="btn btn-ghost" data-close>✕</button>
+      <button class="btn btn-icon" data-close title="Cerrar"><svg class="ic"><use href="#i-x"/></svg></button>
     </div>
     <form id="tripForm" class="modal-body">
       <label class="field">
@@ -279,7 +335,7 @@
   <div class="modal modal-sm" role="dialog" aria-modal="true">
     <div class="modal-head">
       <h3>Guardar mapa sin conexión</h3>
-      <button class="btn btn-ghost" data-close>✕</button>
+      <button class="btn btn-icon" data-close title="Cerrar"><svg class="ic"><use href="#i-x"/></svg></button>
     </div>
     <div class="modal-body">
       <p>Se descargarán los mosaicos del mapa que cubren todos los puntos de tu itinerario (zoom 11–16) para poder consultarlos sin internet.</p>
@@ -289,7 +345,7 @@
       <div class="modal-foot">
         <span class="spacer"></span>
         <button type="button" class="btn btn-ghost" data-close>Cerrar</button>
-        <button type="button" class="btn btn-primary" id="btnStartOffline">⬇️ Descargar</button>
+        <button type="button" class="btn btn-primary" id="btnStartOffline"><svg class="ic"><use href="#i-download"/></svg><span>Descargar</span></button>
       </div>
     </div>
   </div>
