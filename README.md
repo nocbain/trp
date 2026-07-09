@@ -15,15 +15,16 @@ Aplicación web para organizar viajes al estilo Wanderlog, pero **sin cuentas, s
 - Entre actividad y actividad se muestra el **trayecto estimado** (distancia, minutos y modo).
 
 ### 🗺️ Mapa
-- Cartografía CARTO Voyager: diseño cuidado y **topónimos en alfabeto latino/inglés en todo el mundo**.
+- **Pantalla completa**, con controles flotantes de vidrio.
+- Cartografía vectorial (MapLibre GL + OpenFreeMap, estilo Liberty). Las capas de texto se reescriben para preferir `name:en` → `name:latin`, así los **topónimos salen en inglés/alfabeto latino en todo el mundo**, también en China o Japón.
 - Todos los puntos numerados y coloreados por día, con la ruta del día dibujada.
-- Filtro por día con chips.
+- Al filtrar por un día se abre un **panel con sus paradas en orden**: arrastra o usa las flechas para **reordenar la ruta** al momento, y pulsa una parada para volar hasta ella.
 - **Exportar la ruta a Google Maps** (todas las paradas encadenadas) — por día o según el filtro activo.
 
 ### 📴 Sin conexión
 - Es una **PWA**: la app entera se guarda en caché y se puede instalar en el móvil.
 - Los datos del itinerario se guardan siempre en el dispositivo (localStorage).
-- **«Guardar mapa sin conexión»** (menú ⋯): descarga los mosaicos del mapa que cubren tu itinerario (zoom 11–16) para consultarlos sin internet.
+- **«Guardar mapa sin conexión»** (menú ⋯): descarga los mosaicos vectoriales que cubren tu itinerario (zoom 8–14; a partir de ahí MapLibre los reamplía, por lo que el zoom cercano también funciona offline) junto con el estilo, sprites y glifos.
 - Copia de seguridad: **exportar/importar JSON** e **imprimir/PDF**.
 
 ### 🎫 Reservas
@@ -68,23 +69,25 @@ Al abrirla por primera vez se carga un viaje de ejemplo (Kioto) para que veas to
 ## 🛠️ Tecnología
 
 - HTML/CSS/JS vanilla, sin build ni dependencias de red en tiempo de ejecución.
-- [Leaflet 1.9.4](https://leafletjs.com/) incluido en `vendor/` (funciona offline).
-- Tipografías [Inter](https://rsms.me/inter/) y [Fraunces](https://fraunces.undercase.xyz/) servidas en local.
-- Mosaicos [CARTO Voyager](https://carto.com/attributions) (datos © OpenStreetMap) y geocodificación con [Nominatim](https://nominatim.org/) (solo al buscar lugares).
-- Service worker con caché del shell y de mosaicos; manifest PWA.
+- [MapLibre GL JS](https://maplibre.org/) incluido en `vendor/` (funciona offline).
+- Mapa base: [OpenFreeMap](https://openfreemap.org/) (datos © OpenStreetMap), estilo Liberty con etiquetas localizadas al inglés.
+- Tipografía [Inter](https://rsms.me/inter/) servida en local; interfaz «liquid glass» con `backdrop-filter`.
+- Geocodificación con [Nominatim](https://nominatim.org/) (solo al buscar lugares).
+- Service worker con caché del shell y del mapa; manifest PWA.
 
 ## 📁 Estructura
 
 ```
-index.html            interfaz (pestañas, modales)
-css/styles.css        sistema de diseño (claro/oscuro, impresión, móvil)
-js/app.js             lógica: estado, itinerario, mapa, exportaciones, offline
-sw.js                 service worker (shell + mosaicos)
+index.html            interfaz (pestañas, modales, sprite de iconos SVG)
+css/styles.css        sistema de diseño liquid glass (claro/oscuro, impresión, móvil)
+js/app.js             lógica: estado, itinerario, calendario, mapa, exportaciones, offline
+sw.js                 service worker (shell + mapa)
 manifest.webmanifest  manifest PWA
-vendor/leaflet/       Leaflet embebido
+vendor/maplibre/      MapLibre GL embebido
+vendor/fonts/         Inter embebida
 ```
 
 ## ⚠️ Notas
 
 - La estimación de trayectos es orientativa (línea recta × 1,3, a pie 4,5 km/h, transporte ~22 km/h): sirve para valorar la carga del día, no sustituye al navegador.
-- Los mosaicos de CARTO son de uso gratuito con atribución para proyectos personales; la descarga offline está limitada a ~1600 mosaicos por viaje para un uso razonable.
+- OpenFreeMap es un servicio gratuito sin clave de API; la descarga offline está limitada a ~2000 archivos por viaje para un uso razonable.

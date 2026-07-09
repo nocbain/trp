@@ -5,7 +5,7 @@
      manual de "Guardar mapa sin conexión". */
 "use strict";
 
-const SHELL_CACHE = "voyage-shell-v2";
+const SHELL_CACHE = "voyage-shell-v3";
 const TILE_CACHE = "voyage-tiles-v1";
 const SHELL = [
   "./",
@@ -17,16 +17,8 @@ const SHELL = [
   "./vendor/fonts/inter-latin-500-normal.woff2",
   "./vendor/fonts/inter-latin-600-normal.woff2",
   "./vendor/fonts/inter-latin-700-normal.woff2",
-  "./vendor/fonts/fraunces-latin-500-normal.woff2",
-  "./vendor/fonts/fraunces-latin-600-normal.woff2",
-  "./vendor/fonts/fraunces-latin-700-normal.woff2",
-  "./vendor/leaflet/leaflet.js",
-  "./vendor/leaflet/leaflet.css",
-  "./vendor/leaflet/images/marker-icon.png",
-  "./vendor/leaflet/images/marker-icon-2x.png",
-  "./vendor/leaflet/images/marker-shadow.png",
-  "./vendor/leaflet/images/layers.png",
-  "./vendor/leaflet/images/layers-2x.png",
+  "./vendor/maplibre/maplibre-gl.js",
+  "./vendor/maplibre/maplibre-gl.css",
 ];
 
 self.addEventListener("install", e => {
@@ -47,8 +39,9 @@ self.addEventListener("fetch", e => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET") return;
 
-  // Mosaicos del mapa: cache-first, y se guarda lo que se navega.
-  if (url.hostname.endsWith("basemaps.cartocdn.com") || url.hostname === "tile.openstreetmap.org") {
+  // Mapa (mosaicos vectoriales, estilo, sprites y glifos):
+  // cache-first, y se guarda todo lo que se navega.
+  if (url.hostname === "tiles.openfreemap.org") {
     e.respondWith(
       caches.open(TILE_CACHE).then(async cache => {
         const hit = await cache.match(e.request);

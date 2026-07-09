@@ -71,7 +71,8 @@ let ui = {
   mapDayFilter: "all",
   editingId: null,   // id de actividad en edición
   editingLoc: null,  // {lat,lng,place} temporal del modal
-  map: null, miniMap: null, miniMarker: null, mapLayers: [],
+  map: null, mapPromise: null, markers: [],
+  miniMap: null, miniMapPromise: null, miniMarker: null,
 };
 
 function newActivity(over = {}) {
@@ -576,12 +577,41 @@ function renderBudget() {
     </table>`;
 }
 
-/* ── Mapa ────────────────────────────────────────────────── */
-/* CARTO Voyager: cartografía cuidada y topónimos en alfabeto latino/inglés
-   en todo el mundo. Se fija un único subdominio para que los mosaicos que
-   se navegan y los que se descargan para offline compartan caché. */
-const TILE_URL = "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png";
-const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
+/* ── Mapa (MapLibre GL + OpenFreeMap) ────────────────────── */
+/* Vector tiles de OpenFreeMap (datos OpenStreetMap) con el estilo
+   Liberty. Antes de crear el mapa se reescriben las capas de texto
+   para preferir name:en → name:latin → name, de modo que los
+   topónimos salgan en inglés/alfabeto latino en todo el mundo
+   (también en China, Japón, etc.). */
+const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
+const MAP_HOST = "tiles.openfreemap.org";
+const FALLBACK_STYLE = {
+  version: 8,
+  name: "voyage-offline-fallback",
+  sources: {},
+  layers: [{ id: "bg", type: "background", paint: { "background-color": "#dde3e8" } }],
+};
+
+function localizeStyle(style) {
+  const tf = ["coalesce", ["get", "name:en"], ["get", "name:latin"], ["get", "name"]];
+  (style.layers || []).forEach(l => {
+    if (l.layout && l.layout["text-field"] && JSON.stringify(l.layout["text-field"]).includes("name"))
+      l.layout["text-field"] = tf;
+  });
+  return style;
+}
+
+let mapStylePromise = null;
+function getMapStyle() {
+  mapStylePromise ||= fetch(MAP_STYLE_URL)
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(localizeStyle)
+    .catch(() => {
+      toast("No se pudo cargar el fondo del mapa (¿sin conexión?). Los puntos y rutas se muestran igualmente.");
+      return FALLBACK_STYLE;
+    });
+  return mapStylePromise;
+}
 
 function geoItems(dayFilter = "all") {
   const t = trip();
@@ -597,9 +627,9 @@ function geoItems(dayFilter = "all") {
 
 function renderMapChips() {
   const t = trip();
-  const chips = [`<button class="chip ${ui.mapDayFilter === "all" ? "active" : ""}" data-day="all">Todos los días</button>`]
+  const chips = [`<button class="chip ${ui.mapDayFilter === "all" ? "active" : ""}" data-day="all">Todos</button>`]
     .concat(t.days.map((d, i) =>
-      `<button class="chip ${String(i) === String(ui.mapDayFilter) ? "active" : ""}" data-day="${i}" style="${String(i) === String(ui.mapDayFilter) ? `background:${DAY_COLORS[i % DAY_COLORS.length]};border-color:${DAY_COLORS[i % DAY_COLORS.length]}` : ""}">Día ${i + 1}</button>`));
+      `<button class="chip ${String(i) === String(ui.mapDayFilter) ? "active" : ""}" data-day="${i}" style="${String(i) === String(ui.mapDayFilter) ? `background:${DAY_COLORS[i % DAY_COLORS.length]};border-color:transparent` : ""}">Día ${i + 1}</button>`));
   $("#mapDayChips").innerHTML = chips.join("");
   $$("#mapDayChips .chip").forEach(c => c.addEventListener("click", () => {
     ui.mapDayFilter = c.dataset.day;
@@ -609,48 +639,160 @@ function renderMapChips() {
 }
 
 function ensureMap() {
-  if (ui.map) return ui.map;
-  ui.map = L.map("map", { zoomControl: true }).setView([40.4168, -3.7038], 5);
-  L.tileLayer(TILE_URL, { attribution: TILE_ATTR, maxZoom: 19 }).addTo(ui.map);
-  return ui.map;
+  ui.mapPromise ||= (async () => {
+    const style = await getMapStyle();
+    const map = new maplibregl.Map({
+      container: "map",
+      style: structuredClone(style),
+      center: [-3.7038, 40.4168],
+      zoom: 4.2,
+      attributionControl: { compact: true },
+    });
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+    await new Promise(res => map.once("load", res));
+    map.addSource("routes", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+    map.addLayer({
+      id: "routes-line", type: "line", source: "routes",
+      paint: { "line-color": ["get", "color"], "line-width": 3.5, "line-opacity": .85, "line-dasharray": [.4, 1.6] },
+      layout: { "line-cap": "round", "line-join": "round" },
+    });
+    ui.map = map;
+    return map;
+  })();
+  return ui.mapPromise;
 }
 
-function refreshMap() {
-  const map = ensureMap();
-  setTimeout(() => map.invalidateSize(), 60);
-  ui.mapLayers.forEach(l => map.removeLayer(l));
-  ui.mapLayers = [];
-  const pts = geoItems(ui.mapDayFilter);
-  if (!pts.length) return;
+async function refreshMap() {
+  const map = await ensureMap();
+  requestAnimationFrame(() => map.resize());
+  ui.markers.forEach(m => m.remove());
+  ui.markers = [];
 
-  // agrupar por día para trazar una línea por día
+  const pts = geoItems(ui.mapDayFilter);
   const byDay = {};
   pts.forEach(p => (byDay[p.dayIdx] ||= []).push(p));
-  const bounds = [];
+
+  const features = [];
+  const bounds = new maplibregl.LngLatBounds();
   Object.entries(byDay).forEach(([di, list]) => {
     const color = DAY_COLORS[di % DAY_COLORS.length];
-    const latlngs = list.map(p => [p.it.lat, p.it.lng]);
-    if (latlngs.length > 1) {
-      const line = L.polyline(latlngs, { color, weight: 3.5, opacity: .75, dashArray: "6 8" }).addTo(map);
-      ui.mapLayers.push(line);
-    }
+    if (list.length > 1)
+      features.push({
+        type: "Feature", properties: { color },
+        geometry: { type: "LineString", coordinates: list.map(p => [p.it.lng, p.it.lat]) },
+      });
     list.forEach((p, i) => {
       const cat = CATS[p.it.cat] || CATS.other;
-      const icon = L.divIcon({
-        className: "",
-        html: `<div class="marker-pin" style="background:${color}"><span>${i + 1}</span></div>`,
-        iconSize: [30, 30], iconAnchor: [15, 28], popupAnchor: [0, -26],
-      });
-      const mk = L.marker([p.it.lat, p.it.lng], { icon }).addTo(map);
-      mk.bindPopup(`
+      const el = document.createElement("div");
+      el.className = "marker-dot";
+      el.style.background = color;
+      el.innerHTML = `<span>${i + 1}</span>`;
+      const popup = new maplibregl.Popup({ offset: 20, closeButton: false }).setHTML(`
         <div class="popup-title">${cat.emoji} ${esc(p.it.title)}</div>
         <div class="popup-meta">Día ${Number(di) + 1}${p.it.time ? " · " + esc(p.it.time) : ""}${p.it.duration ? " · " + fmtDur(p.it.duration) : ""}</div>
         ${p.it.notes ? `<div class="popup-meta">${esc(p.it.notes)}</div>` : ""}`);
-      ui.mapLayers.push(mk);
-      bounds.push([p.it.lat, p.it.lng]);
+      const mk = new maplibregl.Marker({ element: el }).setLngLat([p.it.lng, p.it.lat]).setPopup(popup).addTo(map);
+      ui.markers.push(mk);
+      bounds.extend([p.it.lng, p.it.lat]);
     });
   });
-  if (bounds.length) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+  const src = map.getSource("routes");
+  if (src) src.setData({ type: "FeatureCollection", features });
+  if (!bounds.isEmpty()) {
+    const single = ui.mapDayFilter !== "all";
+    map.fitBounds(bounds, {
+      padding: { top: 90, bottom: 60, right: 60, left: single ? 380 : 60 },
+      maxZoom: 15, duration: 700,
+    });
+  }
+  renderMapPanel();
+}
+
+/* panel lateral: paradas del día seleccionado, reordenables */
+function renderMapPanel() {
+  const panel = $("#mapDayPanel");
+  if (ui.mapDayFilter === "all") { panel.hidden = true; return; }
+  const t = trip();
+  const di = Number(ui.mapDayFilter);
+  const day = t.days[di];
+  if (!day) { panel.hidden = true; return; }
+  panel.hidden = false;
+
+  const st = dayStats(day);
+  const color = DAY_COLORS[di % DAY_COLORS.length];
+  $("#mapPanelTitle").textContent = `Día ${di + 1} · ${fmtDate(day.date, { weekday: "short", day: "numeric", month: "short" })}`;
+  $("#mapPanelMeta").textContent = day.items.length
+    ? `${st.rating.label} · ${(st.totalMin / 60).toFixed(1)} h · ${st.km.toFixed(1)} km`
+    : "Día libre";
+
+  let geoN = 0;
+  $("#mapStops").innerHTML = day.items.length ? day.items.map((it, ii) => {
+    const geo = it.lat != null && it.lng != null;
+    const n = geo ? ++geoN : null;
+    const cat = CATS[it.cat] || CATS.other;
+    return `
+    <li class="map-stop ${geo ? "" : "no-geo"}" draggable="true" data-idx="${ii}" data-id="${it.id}">
+      <span class="stop-grip" title="Arrastrar para reordenar">${ic("grip")}</span>
+      <span class="stop-num" style="${geo ? `background:${color}` : ""}">${geo ? n : "–"}</span>
+      <span class="stop-body">
+        <span class="stop-title">${esc(it.title)}</span>
+        <span class="stop-meta">${cat.emoji} ${it.time ? esc(it.time) + " · " : ""}${it.duration ? fmtDur(it.duration) : ""}${geo ? "" : " · sin ubicación"}</span>
+      </span>
+      <span class="stop-btns">
+        <button class="btn btn-icon" data-move="up" ${ii === 0 ? "disabled" : ""} title="Subir">${ic("up")}</button>
+        <button class="btn btn-icon" data-move="down" ${ii === day.items.length - 1 ? "disabled" : ""} title="Bajar">${ic("down")}</button>
+      </span>
+    </li>`;
+  }).join("") : `<li class="map-stop-empty">Sin actividades este día.</li>`;
+
+  // clic → volar al punto · flechas → reordenar · drag → reordenar
+  $$("#mapStops .map-stop").forEach(li => {
+    const idx = Number(li.dataset.idx);
+    const it = day.items[idx];
+    li.addEventListener("click", e => {
+      if (e.target.closest("[data-move]")) return;
+      if (it.lat != null && ui.map) ui.map.flyTo({ center: [it.lng, it.lat], zoom: Math.max(ui.map.getZoom(), 14) });
+    });
+    $$("[data-move]", li).forEach(b => b.addEventListener("click", () => {
+      const to = b.dataset.move === "up" ? idx - 1 : idx + 1;
+      if (to < 0 || to >= day.items.length) return;
+      const [moved] = day.items.splice(idx, 1);
+      day.items.splice(to, 0, moved);
+      save();
+      renderAll();
+    }));
+    li.addEventListener("dragstart", e => {
+      li.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      try { e.dataTransfer.setData("text/plain", li.dataset.id); } catch {}
+    });
+    li.addEventListener("dragend", () => li.classList.remove("dragging"));
+  });
+}
+
+/* reordenación por arrastre dentro del panel (listeners únicos en el <ol>) */
+function bindMapStopsDnD() {
+  const list = $("#mapStops");
+  list.addEventListener("dragover", e => {
+    e.preventDefault();
+    const dragging = $(".map-stop.dragging", list);
+    if (!dragging) return;
+    const after = $$(".map-stop:not(.dragging)", list).find(el => {
+      const r = el.getBoundingClientRect();
+      return e.clientY < r.top + r.height / 2;
+    });
+    if (after) list.insertBefore(dragging, after);
+    else list.appendChild(dragging);
+  });
+  list.addEventListener("drop", e => {
+    e.preventDefault();
+    const day = trip().days[Number(ui.mapDayFilter)];
+    if (!day) return;
+    const order = $$(".map-stop", list).map(el => el.dataset.id);
+    day.items.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+    save();
+    renderAll();
+  });
 }
 
 /* ── Exportar rutas ──────────────────────────────────────── */
@@ -718,31 +860,40 @@ function openActivityModal(id = null, presets = {}) {
   initMiniMap();
 }
 
-function initMiniMap() {
-  setTimeout(() => {
-    if (!ui.miniMap) {
-      ui.miniMap = L.map("miniMap", { zoomControl: false, attributionControl: false });
-      L.tileLayer(TILE_URL, { maxZoom: 19 }).addTo(ui.miniMap);
-      ui.miniMap.on("click", e => setEditingLoc(e.latlng.lat, e.latlng.lng));
-    }
-    ui.miniMap.invalidateSize();
-    const mainCenter = ui.map ? ui.map.getCenter() : { lat: 40.4168, lng: -3.7038 };
-    if (ui.editingLoc) {
-      ui.miniMap.setView([ui.editingLoc.lat, ui.editingLoc.lng], 14);
-      placeMiniMarker(ui.editingLoc.lat, ui.editingLoc.lng);
-    } else {
-      // centrar cerca del resto del itinerario si existe
-      const pts = geoItems("all");
-      if (pts.length) ui.miniMap.setView([pts[0].it.lat, pts[0].it.lng], 12);
-      else ui.miniMap.setView([mainCenter.lat, mainCenter.lng], 5);
-      if (ui.miniMarker) { ui.miniMap.removeLayer(ui.miniMarker); ui.miniMarker = null; }
-      updateCoordLabel();
-    }
-  }, 80);
+function ensureMiniMap() {
+  ui.miniMapPromise ||= (async () => {
+    const style = await getMapStyle();
+    const mm = new maplibregl.Map({
+      container: "miniMap",
+      style: structuredClone(style),
+      center: [-3.7038, 40.4168],
+      zoom: 4,
+      attributionControl: false,
+    });
+    mm.on("click", e => setEditingLoc(e.lngLat.lat, e.lngLat.lng));
+    ui.miniMap = mm;
+    return mm;
+  })();
+  return ui.miniMapPromise;
+}
+
+async function initMiniMap() {
+  const mm = await ensureMiniMap();
+  setTimeout(() => mm.resize(), 80);
+  if (ui.editingLoc) {
+    mm.jumpTo({ center: [ui.editingLoc.lng, ui.editingLoc.lat], zoom: 14 });
+    placeMiniMarker(ui.editingLoc.lat, ui.editingLoc.lng);
+  } else {
+    // centrar cerca del resto del itinerario si existe
+    const pts = geoItems("all");
+    if (pts.length) mm.jumpTo({ center: [pts[0].it.lng, pts[0].it.lat], zoom: 11 });
+    if (ui.miniMarker) { ui.miniMarker.remove(); ui.miniMarker = null; }
+    updateCoordLabel();
+  }
 }
 function placeMiniMarker(lat, lng) {
-  if (ui.miniMarker) ui.miniMarker.setLatLng([lat, lng]);
-  else ui.miniMarker = L.marker([lat, lng]).addTo(ui.miniMap);
+  if (ui.miniMarker) ui.miniMarker.setLngLat([lng, lat]);
+  else if (ui.miniMap) ui.miniMarker = new maplibregl.Marker({ color: "#0b4f55" }).setLngLat([lng, lat]).addTo(ui.miniMap);
   updateCoordLabel();
 }
 function setEditingLoc(lat, lng, place) {
@@ -763,7 +914,7 @@ async function geocode() {
   const m = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
   if (m) {
     setEditingLoc(Number(m[1]), Number(m[2]));
-    ui.miniMap.setView([Number(m[1]), Number(m[2])], 14);
+    ui.miniMap?.jumpTo({ center: [Number(m[2]), Number(m[1])], zoom: 14 });
     return;
   }
   const box = $("#geoResults");
@@ -778,7 +929,7 @@ async function geocode() {
     $$("button[data-i]", box).forEach(b => b.addEventListener("click", () => {
       const r = data[Number(b.dataset.i)];
       setEditingLoc(Number(r.lat), Number(r.lon), r.display_name.split(",").slice(0, 2).join(","));
-      ui.miniMap.setView([Number(r.lat), Number(r.lon)], 15);
+      ui.miniMap?.jumpTo({ center: [Number(r.lon), Number(r.lat)], zoom: 15 });
       box.hidden = true;
     }));
   } catch {
@@ -892,49 +1043,96 @@ function importJson(file) {
 }
 
 /* ── Mapa sin conexión (descarga de mosaicos) ────────────── */
+/* Los vector tiles llegan hasta z14 y MapLibre los reamplía para
+   zooms mayores, así que basta con descargar z8–14 de la zona del
+   viaje (más el estilo, sprites y glifos de texto). */
 const TILE_CACHE = "voyage-tiles-v1";
-const MAX_TILES = 1600;
+const MAX_TILES = 2000;
 
 function lng2tile(lng, z) { return Math.floor((lng + 180) / 360 * 2 ** z); }
 function lat2tile(lat, z) {
   const r = lat * Math.PI / 180;
   return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * 2 ** z);
 }
-function tilesForTrip() {
+
+async function offlineUrlsForTrip() {
   const pts = geoItems("all");
   if (!pts.length) return [];
+  const style = await getMapStyle();
+  if (!style.sources || !Object.keys(style.sources).length) return []; // sin conexión: no hay estilo real
+
+  const urls = [MAP_STYLE_URL];
+
+  // plantilla de mosaicos a partir del TileJSON del estilo
+  let template = null;
+  for (const src of Object.values(style.sources)) {
+    if (src.type !== "vector") continue;
+    if (src.tiles) { template = src.tiles[0]; break; }
+    if (src.url) {
+      try {
+        const tj = await (await fetch(src.url)).json();
+        urls.push(src.url);
+        if (tj.tiles) { template = tj.tiles[0]; break; }
+      } catch { return []; }
+    }
+  }
+  if (!template) return [];
+
+  // sprites e iconos del estilo
+  if (style.sprite) urls.push(`${style.sprite}.json`, `${style.sprite}.png`, `${style.sprite}@2x.json`, `${style.sprite}@2x.png`);
+  // glifos de texto (rangos latinos básicos de las fuentes usadas)
+  if (style.glyphs) {
+    const stacks = new Set();
+    (style.layers || []).forEach(l => {
+      const f = l.layout && l.layout["text-font"];
+      if (Array.isArray(f)) stacks.add(f.join(","));
+    });
+    for (const s of stacks)
+      for (const range of ["0-255", "256-511", "512-767", "768-1023"])
+        urls.push(style.glyphs.replace("{fontstack}", encodeURIComponent(s)).replace("{range}", range));
+  }
+
+  // bbox del viaje con margen
   let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
   pts.forEach(p => {
     minLat = Math.min(minLat, p.it.lat); maxLat = Math.max(maxLat, p.it.lat);
     minLng = Math.min(minLng, p.it.lng); maxLng = Math.max(maxLng, p.it.lng);
   });
-  const padLat = Math.max(.02, (maxLat - minLat) * .2), padLng = Math.max(.02, (maxLng - minLng) * .2);
+  const padLat = Math.max(.03, (maxLat - minLat) * .25), padLng = Math.max(.03, (maxLng - minLng) * .25);
   minLat -= padLat; maxLat += padLat; minLng -= padLng; maxLng += padLng;
-  const urls = [];
-  for (let z = 11; z <= 16; z++) {
+
+  // vista mundial ligera + zona del viaje en detalle
+  for (let z = 0; z <= 5; z++)
+    for (let x = 0; x < Math.min(2 ** z, 4); x++)
+      for (let y = 0; y < Math.min(2 ** z, 4); y++)
+        urls.push(template.replace("{z}", z).replace("{x}", x).replace("{y}", y));
+  for (let z = 8; z <= 14; z++) {
     const x0 = lng2tile(minLng, z), x1 = lng2tile(maxLng, z);
     const y0 = lat2tile(maxLat, z), y1 = lat2tile(minLat, z);
     for (let x = x0; x <= x1; x++)
       for (let y = y0; y <= y1; y++)
-        urls.push(TILE_URL.replace("{z}", z).replace("{x}", x).replace("{y}", y));
+        urls.push(template.replace("{z}", z).replace("{x}", x).replace("{y}", y));
     if (urls.length > MAX_TILES) break;
   }
   return urls.slice(0, MAX_TILES);
 }
 
-function openOfflineModal() {
-  const urls = tilesForTrip();
-  $("#offlineEstimate").textContent = urls.length
-    ? `${urls.length} mosaicos · aprox. ${(urls.length * 22 / 1024).toFixed(1)} MB`
-    : "No hay puntos con ubicación en este viaje todavía.";
+async function openOfflineModal() {
+  $("#offlineModal").hidden = false;
+  $("#offlineEstimate").textContent = "Calculando…";
   $("#offlineProgress").style.width = "0";
   $("#offlineStatus").textContent = "";
+  const urls = await offlineUrlsForTrip();
+  $("#offlineEstimate").textContent = urls.length
+    ? `${urls.length} archivos · aprox. ${(urls.length * 40 / 1024).toFixed(1)} MB`
+    : (geoItems("all").length
+      ? "Necesitas conexión a internet para descargar el mapa."
+      : "No hay puntos con ubicación en este viaje todavía.");
   $("#btnStartOffline").disabled = !urls.length;
-  $("#offlineModal").hidden = false;
 }
 
 async function downloadTiles() {
-  const urls = tilesForTrip();
+  const urls = await offlineUrlsForTrip();
   if (!urls.length) return;
   if (!("caches" in window)) { toast("Tu navegador no permite guardar el mapa (necesita HTTPS)."); return; }
   const cache = await caches.open(TILE_CACHE);
@@ -971,7 +1169,13 @@ function switchTab(tab) {
   ui.tab = tab;
   $$(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   $$(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + tab));
-  if (tab === "map") refreshMap();
+  document.body.classList.toggle("tab-map", tab === "map");
+  if (tab === "map") {
+    // altura disponible bajo la barra superior y las pestañas
+    const chrome = $(".topbar").offsetHeight + $(".tabs").offsetHeight + 18;
+    document.documentElement.style.setProperty("--chrome-h", chrome + "px");
+    refreshMap();
+  }
 }
 
 function closeModals() {
@@ -1057,6 +1261,12 @@ function bindGlobal() {
 
   // exportar ruta (vista mapa: respeta el filtro de día activo)
   $("#btnExportGmaps").addEventListener("click", () => openGmaps(routePoints()));
+  $("#btnClosePanel").addEventListener("click", () => {
+    ui.mapDayFilter = "all";
+    renderMapChips();
+    refreshMap();
+  });
+  bindMapStopsDnD();
 
   // notas
   let notesTimer;
