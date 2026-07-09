@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0d5c63">
+<meta name="description" content="Voyage — planificador de itinerarios de viaje: calendario día a día, mapa, exportación a Google Maps y Amap, y modo sin conexión.">
+<title>Voyage · Planificador de viajes</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%AD%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">🧭</span>
+    <div class="brand-text">
+      <h1>Voyage</h1>
+      <span class="brand-sub">Tu viaje, a tu manera</span>
+    </div>
+  </div>
+
+  <div class="trip-switch">
+    <select id="tripSelect" aria-label="Seleccionar viaje"></select>
+    <button class="btn btn-ghost" id="btnEditTrip" title="Editar viaje">✏️</button>
+    <button class="btn btn-ghost" id="btnNewTrip" title="Nuevo viaje">＋ Viaje</button>
+  </div>
+
+  <div class="topbar-actions">
+    <span id="netStatus" class="net-pill" title="Estado de conexión"></span>
+    <div class="menu-wrap">
+      <button class="btn btn-ghost" id="btnMore" aria-haspopup="true" aria-expanded="false">⋯</button>
+      <div class="menu" id="moreMenu" hidden>
+        <button id="btnExportJson">⬇️ Exportar copia (JSON)</button>
+        <button id="btnImportJson">⬆️ Importar copia (JSON)</button>
+        <button id="btnPrint">🖨️ Imprimir / PDF</button>
+        <hr>
+        <button id="btnOfflineMap">🗺️ Guardar mapa sin conexión</button>
+        <hr>
+        <button id="btnDeleteTrip" class="danger">🗑️ Eliminar viaje</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist" aria-label="Secciones">
+  <button class="tab active" data-tab="itinerary" role="tab">📅 <span>Itinerario</span></button>
+  <button class="tab" data-tab="map" role="tab">🗺️ <span>Mapa</span></button>
+  <button class="tab" data-tab="bookings" role="tab">🎫 <span>Reservas</span> <em class="tab-badge" id="badgeBookings"></em></button>
+  <button class="tab" data-tab="prep" role="tab">📋 <span>Antes del viaje</span> <em class="tab-badge" id="badgePrep"></em></button>
+  <button class="tab" data-tab="packing" role="tab">🎒 <span>Equipaje</span> <em class="tab-badge" id="badgePacking"></em></button>
+  <button class="tab" data-tab="budget" role="tab">💶 <span>Presupuesto</span></button>
+</nav>
+
+<main>
+
+  <!-- ══════════ ITINERARIO ══════════ -->
+  <section id="view-itinerary" class="view active">
+    <div class="view-head">
+      <div>
+        <h2 id="tripTitle"></h2>
+        <p class="muted" id="tripDates"></p>
+      </div>
+      <div class="view-head-actions">
+        <button class="btn btn-primary" id="btnAddActivity">＋ Añadir actividad</button>
+      </div>
+    </div>
+    <div class="itinerary-layout">
+      <div class="days" id="daysContainer"></div>
+      <aside class="ideas-panel">
+        <div class="ideas-head">
+          <h3>💡 Ideas · sin asignar</h3>
+          <p class="muted small">Arrastra a un día cuando decidas cuándo ir.</p>
+        </div>
+        <div class="ideas-list drop-zone" id="ideasList" data-day="ideas"></div>
+        <button class="btn btn-soft w-full" id="btnAddIdea">＋ Añadir idea</button>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ══════════ MAPA ══════════ -->
+  <section id="view-map" class="view">
+    <div class="map-toolbar">
+      <div class="chips" id="mapDayChips"></div>
+      <div class="map-actions">
+        <button class="btn btn-soft" id="btnExportGmaps">📍 Ruta en Google Maps</button>
+        <button class="btn btn-soft" id="btnExportAmap">📍 Ruta en Amap 高德</button>
+      </div>
+    </div>
+    <div id="map" role="application" aria-label="Mapa del itinerario"></div>
+    <p class="map-hint muted small">Consejo: pulsa «Guardar mapa sin conexión» en el menú ⋯ para poder consultar esta zona sin internet.</p>
+  </section>
+
+  <!-- ══════════ RESERVAS ══════════ -->
+  <section id="view-bookings" class="view">
+    <div class="view-head">
+      <div>
+        <h2>Reservas</h2>
+        <p class="muted">Vuelos, hoteles, trenes, entradas y restaurantes con reserva.</p>
+      </div>
+      <button class="btn btn-primary" id="btnAddBooking">＋ Añadir reserva</button>
+    </div>
+    <div id="bookingsList" class="bookings-list"></div>
+  </section>
+
+  <!-- ══════════ ANTES DEL VIAJE ══════════ -->
+  <section id="view-prep" class="view">
+    <div class="view-head">
+      <div>
+        <h2>Antes del viaje</h2>
+        <p class="muted">Trámites y cosas a tener en cuenta: visados, seguros, moneda, vacunas…</p>
+      </div>
+      <button class="btn btn-primary" id="btnAddPrep">＋ Añadir tarea</button>
+    </div>
+    <div class="progress-line"><div class="progress-fill" id="prepProgress"></div></div>
+    <ul class="check-list" id="prepList"></ul>
+    <div class="notes-block">
+      <h3>📝 Notas del viaje</h3>
+      <textarea id="tripNotes" placeholder="Apunta aquí cualquier cosa: frases útiles, teléfonos de emergencia, direcciones del alojamiento…"></textarea>
+    </div>
+  </section>
+
+  <!-- ══════════ EQUIPAJE ══════════ -->
+  <section id="view-packing" class="view">
+    <div class="view-head">
+      <div>
+        <h2>Checklist de equipaje</h2>
+        <p class="muted">Todo lo que hay que pillar antes de salir por la puerta.</p>
+      </div>
+      <div class="view-head-actions">
+        <button class="btn btn-soft" id="btnPackingTemplate">✨ Añadir básicos</button>
+        <button class="btn btn-primary" id="btnAddPacking">＋ Añadir</button>
+      </div>
+    </div>
+    <div class="progress-line"><div class="progress-fill" id="packingProgress"></div></div>
+    <div id="packingGroups"></div>
+  </section>
+
+  <!-- ══════════ PRESUPUESTO ══════════ -->
+  <section id="view-budget" class="view">
+    <div class="view-head">
+      <div>
+        <h2>Presupuesto</h2>
+        <p class="muted">Suma automática de los costes que apuntes en actividades y reservas.</p>
+      </div>
+    </div>
+    <div id="budgetSummary" class="budget-summary"></div>
+    <div id="budgetTableWrap"></div>
+  </section>
+
+</main>
+
+<!-- ══════════ MODAL ACTIVIDAD ══════════ -->
+<div class="modal-backdrop" id="activityModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="activityModalTitle">
+    <div class="modal-head">
+      <h3 id="activityModalTitle">Nueva actividad</h3>
+      <button class="btn btn-ghost" data-close>✕</button>
+    </div>
+    <form id="activityForm" class="modal-body">
+      <label class="field">
+        <span>Título *</span>
+        <input type="text" id="fTitle" required placeholder="Ej.: Templo Kinkaku-ji">
+      </label>
+
+      <div class="field-row">
+        <label class="field">
+          <span>Categoría</span>
+          <select id="fCategory"></select>
+        </label>
+        <label class="field">
+          <span>Día</span>
+          <select id="fDay"></select>
+        </label>
+      </div>
+
+      <div class="field-row">
+        <label class="field">
+          <span>Hora</span>
+          <input type="time" id="fTime">
+        </label>
+        <label class="field">
+          <span>Duración (min)</span>
+          <input type="number" id="fDuration" min="0" step="5" placeholder="60">
+        </label>
+        <label class="field">
+          <span>Coste (€)</span>
+          <input type="number" id="fCost" min="0" step="0.01" placeholder="0">
+        </label>
+      </div>
+
+      <label class="field">
+        <span>Lugar</span>
+        <div class="geo-row">
+          <input type="text" id="fPlace" placeholder="Busca una dirección o lugar…">
+          <button type="button" class="btn btn-soft" id="btnGeocode">🔎</button>
+        </div>
+        <div id="geoResults" class="geo-results" hidden></div>
+        <p class="muted small">También puedes fijar el punto haciendo clic en el minimapa, o pegar coordenadas «lat, lng».</p>
+      </label>
+      <div id="miniMap"></div>
+      <p class="small muted" id="coordLabel"></p>
+
+      <label class="field">
+        <span>Notas</span>
+        <textarea id="fNotes" rows="2" placeholder="Horario de apertura, consejos, qué pedir…"></textarea>
+      </label>
+
+      <fieldset class="booking-fieldset">
+        <label class="switch-row">
+          <input type="checkbox" id="fIsBooking">
+          <span>🎫 Es una reserva</span>
+        </label>
+        <div id="bookingFields" class="field-row" hidden>
+          <label class="field">
+            <span>Código / localizador</span>
+            <input type="text" id="fBookingCode" placeholder="ABC123">
+          </label>
+          <label class="field">
+            <span>Proveedor</span>
+            <input type="text" id="fBookingProvider" placeholder="Booking, Renfe…">
+          </label>
+          <label class="switch-row confirmed-switch">
+            <input type="checkbox" id="fBookingConfirmed">
+            <span>Confirmada</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <div class="modal-foot">
+        <button type="button" class="btn btn-danger-soft" id="btnDeleteActivity" hidden>Eliminar</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn btn-ghost" data-close>Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════ MODAL VIAJE ══════════ -->
+<div class="modal-backdrop" id="tripModal" hidden>
+  <div class="modal modal-sm" role="dialog" aria-modal="true">
+    <div class="modal-head">
+      <h3 id="tripModalTitle">Nuevo viaje</h3>
+      <button class="btn btn-ghost" data-close>✕</button>
+    </div>
+    <form id="tripForm" class="modal-body">
+      <label class="field">
+        <span>Nombre del viaje *</span>
+        <input type="text" id="tName" required placeholder="Ej.: Japón 2026">
+      </label>
+      <label class="field">
+        <span>Destino</span>
+        <input type="text" id="tDest" placeholder="Ej.: Kioto, Japón">
+      </label>
+      <div class="field-row">
+        <label class="field">
+          <span>Inicio *</span>
+          <input type="date" id="tStart" required>
+        </label>
+        <label class="field">
+          <span>Fin *</span>
+          <input type="date" id="tEnd" required>
+        </label>
+      </div>
+      <div class="modal-foot">
+        <span class="spacer"></span>
+        <button type="button" class="btn btn-ghost" data-close>Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════ MODAL DESCARGA OFFLINE ══════════ -->
+<div class="modal-backdrop" id="offlineModal" hidden>
+  <div class="modal modal-sm" role="dialog" aria-modal="true">
+    <div class="modal-head">
+      <h3>Guardar mapa sin conexión</h3>
+      <button class="btn btn-ghost" data-close>✕</button>
+    </div>
+    <div class="modal-body">
+      <p>Se descargarán los mosaicos del mapa que cubren todos los puntos de tu itinerario (zoom 11–16) para poder consultarlos sin internet.</p>
+      <p class="muted small" id="offlineEstimate"></p>
+      <div class="progress-line"><div class="progress-fill" id="offlineProgress"></div></div>
+      <p class="small" id="offlineStatus"></p>
+      <div class="modal-foot">
+        <span class="spacer"></span>
+        <button type="button" class="btn btn-ghost" data-close>Cerrar</button>
+        <button type="button" class="btn btn-primary" id="btnStartOffline">⬇️ Descargar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="importFile" accept="application/json" hidden>
+<div id="toast" class="toast" hidden></div>
+
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
