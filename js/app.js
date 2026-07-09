@@ -71,7 +71,7 @@ let ui = {
   mapDayFilter: "all",
   editingId: null,   // id de actividad en edición
   editingLoc: null,  // {lat,lng,place} temporal del modal
-  map: null, mapPromise: null, markers: [],
+  map: null, mapPromise: null,
   miniMap: null, miniMapPromise: null, miniMarker: null,
 };
 
@@ -115,51 +115,51 @@ function trip() { return state.trips.find(t => t.id === state.activeTripId); }
 
 /* ── Viaje de ejemplo ────────────────────────────────────── */
 function seedTrip() {
-  const t = newTrip("Kioto · ejemplo", "Kioto, Japón", "2026-10-12", "2026-10-14");
+  const t = newTrip("Pekín · ejemplo", "Pekín, China", "2026-10-12", "2026-10-14");
   const A = (title, cat, time, duration, lat, lng, extra = {}) =>
-    newActivity({ title, cat, time, duration, lat, lng, place: title + ", Kioto", ...extra });
+    newActivity({ title, cat, time, duration, lat, lng, place: title + ", Pekín", ...extra });
   t.days[0].items = [
-    A("Santuario Fushimi Inari", "sight", "08:30", 150, 34.9671, 135.7727, { notes: "Madrugar para evitar multitudes. Subida completa ~2 h." }),
-    A("Templo Kiyomizu-dera", "sight", "11:45", 90, 34.9949, 135.7850, { cost: 4 }),
-    A("Paseo por Gion", "nature", "14:30", 90, 35.0037, 135.7788, { notes: "Calles Hanamikoji y Shirakawa." }),
-    A("Cena en Pontocho", "food", "19:30", 90, 35.0094, 135.7709, { cost: 35, booking: { code: "TBL-4821", provider: "TableCheck", confirmed: true } }),
+    A("Plaza de Tiananmén", "sight", "08:30", 60, 39.9055, 116.3976, { notes: "Llevar el pasaporte: hay control de acceso." }),
+    A("Ciudad Prohibida", "sight", "10:00", 180, 39.9163, 116.3972, { cost: 8, notes: "Reservar entrada con antelación (se agota)." }),
+    A("Parque Jingshan", "nature", "13:30", 60, 39.9250, 116.3958, { cost: 1, notes: "Vistas de la Ciudad Prohibida desde la colina." }),
+    A("Pato laqueado en Quanjude", "food", "19:30", 90, 39.8994, 116.3986, { cost: 30, booking: { code: "QJD-2210", provider: "Quanjude Qianmen", confirmed: true } }),
   ];
   t.days[1].items = [
-    A("Pabellón dorado Kinkaku-ji", "sight", "09:00", 75, 35.0394, 135.7292, { cost: 4 }),
-    A("Jardín zen de Ryōan-ji", "sight", "10:45", 60, 35.0345, 135.7183, { cost: 5 }),
-    A("Bosque de bambú de Arashiyama", "nature", "13:00", 90, 35.0170, 135.6710),
-    A("Puente Togetsukyō y río", "nature", "15:00", 60, 35.0126, 135.6776, { notes: "Helado de matcha en la orilla." }),
+    A("Gran Muralla · Mutianyu", "sight", "08:00", 300, 40.4319, 116.5704, { cost: 20, notes: "Ir en coche con conductor o bus turístico; teleférico + tobogán de bajada." }),
+    A("Hutongs de Nanluoguxiang", "nature", "16:30", 90, 39.9370, 116.4030, { notes: "Callejones tradicionales, buena zona para merendar." }),
+    A("Torre del Tambor", "sight", "18:15", 45, 39.9403, 116.3906, { cost: 3 }),
   ];
   t.days[2].items = [
-    A("Castillo Nijō", "sight", "09:30", 90, 35.0142, 135.7481, { cost: 8 }),
-    A("Mercado Nishiki", "food", "12:00", 90, 35.0050, 135.7649, { cost: 20, notes: "Probar tamagoyaki y mochi recién hecho." }),
-    A("Compras en la estación de Kioto", "shopping", "16:00", 90, 34.9858, 135.7588),
+    A("Templo del Cielo", "sight", "09:00", 120, 39.8822, 116.4066, { cost: 5, notes: "Por la mañana hay locales bailando y haciendo taichí." }),
+    A("Palacio de Verano", "sight", "12:30", 150, 39.9990, 116.2755, { cost: 6, notes: "Paseo en barca por el lago Kunming si hace bueno." }),
+    A("Compras en Wangfujing", "shopping", "17:00", 90, 39.9146, 116.4110),
   ];
   t.ideas = [
-    A("Museo Internacional del Manga", "museum", "", 90, 35.0117, 135.7597, { cost: 9 }),
-    A("Paseo del Filósofo", "nature", "", 75, 35.0270, 135.7940),
+    A("Templo de los Lamas (Yonghe)", "sight", "", 90, 39.9477, 116.4116, { cost: 4 }),
+    A("Distrito de arte 798", "museum", "", 120, 39.9843, 116.4972),
   ];
   t.days[0].items.unshift(newActivity({
-    title: "Check-in · Hotel Granvia Kioto", cat: "hotel", time: "15:00", duration: 30,
-    lat: 34.9857, lng: 135.7587, place: "Hotel Granvia, Estación de Kioto", cost: 420,
-    booking: { code: "GRV-99872", provider: "Booking.com", confirmed: true },
+    title: "Check-in · Hotel en Wangfujing", cat: "hotel", time: "14:00", duration: 30,
+    lat: 39.9151, lng: 116.4113, place: "Wangfujing, Pekín", cost: 380,
+    booking: { code: "PKN-77641", provider: "Trip.com", confirmed: true },
   }));
   t.prep = [
-    { id: uid(), text: "Comprobar vigencia del pasaporte (mín. 6 meses)", done: true, due: "" },
-    { id: uid(), text: "Activar el JR Pass / Suica en el móvil", done: false, due: "2026-10-05" },
+    { id: uid(), text: "Comprobar visado o exención de tránsito para China", done: false, due: "2026-09-15" },
+    { id: uid(), text: "Instalar Alipay o WeChat Pay y vincular tarjeta", done: false, due: "2026-10-05" },
+    { id: uid(), text: "Contratar eSIM o VPN (Google/WhatsApp no funcionan sin ella)", done: false, due: "2026-10-08" },
     { id: uid(), text: "Contratar seguro de viaje", done: false, due: "2026-10-01" },
-    { id: uid(), text: "Cambiar euros a yenes", done: false, due: "" },
+    { id: uid(), text: "Cambiar algo de efectivo a yuanes (RMB)", done: false, due: "" },
     { id: uid(), text: "Descargar mapas sin conexión (menú ⋯)", done: false, due: "" },
   ];
   t.packing = [
     { id: uid(), text: "Pasaporte y copias", done: false, cat: "Documentos" },
-    { id: uid(), text: "Tarjetas + algo de efectivo", done: false, cat: "Documentos" },
-    { id: uid(), text: "Adaptador de enchufe tipo A", done: false, cat: "Electrónica" },
+    { id: uid(), text: "Tarjetas + efectivo en yuanes", done: false, cat: "Documentos" },
+    { id: uid(), text: "Adaptador de enchufe tipo A/I", done: false, cat: "Electrónica" },
     { id: uid(), text: "Batería externa", done: false, cat: "Electrónica" },
-    { id: uid(), text: "Calzado cómodo para caminar", done: false, cat: "Ropa" },
-    { id: uid(), text: "Chubasquero ligero", done: false, cat: "Ropa" },
+    { id: uid(), text: "Calzado cómodo (la Muralla tiene mucha escalera)", done: false, cat: "Ropa" },
+    { id: uid(), text: "Chaqueta: en octubre refresca por la noche", done: false, cat: "Ropa" },
   ];
-  t.notes = "🏨 Hotel Granvia Kioto — JR Kyoto Station Karasuma Chuo-guchi.\n📞 Emergencias en Japón: 110 (policía) / 119 (ambulancia).\n🗣️ Gracias = arigatō · Perdón = sumimasen";
+  t.notes = "📞 Emergencias en China: 110 (policía) / 120 (ambulancia).\n🚇 El metro de Pekín es baratísimo; se paga con Alipay/WeChat.\n🗣️ Hola = nǐ hǎo · Gracias = xièxie · La cuenta = mǎi dān";
   return t;
 }
 
@@ -602,10 +602,20 @@ function localizeStyle(style) {
 }
 
 let mapStylePromise = null;
+let mapFontStack = null; // fuente de glifos del estilo, para numerar los marcadores
 function getMapStyle() {
   mapStylePromise ||= fetch(MAP_STYLE_URL)
     .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(localizeStyle)
+    .then(style => {
+      if (style.glyphs) {
+        const fonts = (style.layers || [])
+          .map(l => l.layout && l.layout["text-font"])
+          .filter(f => Array.isArray(f) && typeof f[0] === "string");
+        mapFontStack = fonts.find(f => f.join().includes("Bold")) || fonts[0] || null;
+      }
+      return style;
+    })
     .catch(() => {
       toast("No se pudo cargar el fondo del mapa (¿sin conexión?). Los puntos y rutas se muestran igualmente.");
       return FALLBACK_STYLE;
@@ -651,11 +661,47 @@ function ensureMap() {
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
     await new Promise(res => map.once("load", res));
     map.addSource("routes", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+    map.addSource("stops", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
     map.addLayer({
       id: "routes-line", type: "line", source: "routes",
       paint: { "line-color": ["get", "color"], "line-width": 3.5, "line-opacity": .85, "line-dasharray": [.4, 1.6] },
       layout: { "line-cap": "round", "line-join": "round" },
     });
+    /* Los marcadores se pintan como capas GL (círculo + número) en vez
+       de elementos DOM: así se mueven exactamente con el mapa, sin el
+       retardo de reposicionar nodos en cada fotograma. */
+    map.addLayer({
+      id: "stops-circle", type: "circle", source: "stops",
+      paint: {
+        "circle-radius": 13,
+        "circle-color": ["get", "color"],
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 2.5,
+      },
+    });
+    if (mapFontStack) {
+      map.addLayer({
+        id: "stops-label", type: "symbol", source: "stops",
+        layout: {
+          "text-field": ["get", "label"],
+          "text-font": mapFontStack,
+          "text-size": 11.5,
+          "text-allow-overlap": true,
+          "text-ignore-placement": true,
+        },
+        paint: { "text-color": "#ffffff" },
+      });
+    }
+    map.on("click", "stops-circle", e => {
+      const f = e.features && e.features[0];
+      if (!f) return;
+      new maplibregl.Popup({ offset: 20, closeButton: false })
+        .setLngLat(f.geometry.coordinates)
+        .setHTML(f.properties.popup)
+        .addTo(map);
+    });
+    map.on("mouseenter", "stops-circle", () => { map.getCanvas().style.cursor = "pointer"; });
+    map.on("mouseleave", "stops-circle", () => { map.getCanvas().style.cursor = ""; });
     ui.map = map;
     return map;
   })();
@@ -665,45 +711,50 @@ function ensureMap() {
 async function refreshMap() {
   const map = await ensureMap();
   requestAnimationFrame(() => map.resize());
-  ui.markers.forEach(m => m.remove());
-  ui.markers = [];
 
   const pts = geoItems(ui.mapDayFilter);
   const byDay = {};
   pts.forEach(p => (byDay[p.dayIdx] ||= []).push(p));
 
-  const features = [];
+  const lineFeatures = [];
+  const stopFeatures = [];
   const bounds = new maplibregl.LngLatBounds();
   Object.entries(byDay).forEach(([di, list]) => {
     const color = DAY_COLORS[di % DAY_COLORS.length];
     if (list.length > 1)
-      features.push({
+      lineFeatures.push({
         type: "Feature", properties: { color },
         geometry: { type: "LineString", coordinates: list.map(p => [p.it.lng, p.it.lat]) },
       });
     list.forEach((p, i) => {
       const cat = CATS[p.it.cat] || CATS.other;
-      const el = document.createElement("div");
-      el.className = "marker-dot";
-      el.style.background = color;
-      el.innerHTML = `<span>${i + 1}</span>`;
-      const popup = new maplibregl.Popup({ offset: 20, closeButton: false }).setHTML(`
-        <div class="popup-title">${cat.emoji} ${esc(p.it.title)}</div>
-        <div class="popup-meta">Día ${Number(di) + 1}${p.it.time ? " · " + esc(p.it.time) : ""}${p.it.duration ? " · " + fmtDur(p.it.duration) : ""}</div>
-        ${p.it.notes ? `<div class="popup-meta">${esc(p.it.notes)}</div>` : ""}`);
-      const mk = new maplibregl.Marker({ element: el }).setLngLat([p.it.lng, p.it.lat]).setPopup(popup).addTo(map);
-      ui.markers.push(mk);
+      stopFeatures.push({
+        type: "Feature",
+        properties: {
+          color,
+          label: String(i + 1),
+          popup: `
+            <div class="popup-title">${cat.emoji} ${esc(p.it.title)}</div>
+            <div class="popup-meta">Día ${Number(di) + 1}${p.it.time ? " · " + esc(p.it.time) : ""}${p.it.duration ? " · " + fmtDur(p.it.duration) : ""}</div>
+            ${p.it.notes ? `<div class="popup-meta">${esc(p.it.notes)}</div>` : ""}`,
+        },
+        geometry: { type: "Point", coordinates: [p.it.lng, p.it.lat] },
+      });
       bounds.extend([p.it.lng, p.it.lat]);
     });
   });
-  const src = map.getSource("routes");
-  if (src) src.setData({ type: "FeatureCollection", features });
+  map.getSource("routes")?.setData({ type: "FeatureCollection", features: lineFeatures });
+  map.getSource("stops")?.setData({ type: "FeatureCollection", features: stopFeatures });
   if (!bounds.isEmpty()) {
     const single = ui.mapDayFilter !== "all";
-    map.fitBounds(bounds, {
-      padding: { top: 90, bottom: 60, right: 60, left: single ? 380 : 60 },
-      maxZoom: 15, duration: 700,
-    });
+    const stage = map.getContainer();
+    const mobile = stage.clientWidth <= 640; // en móvil el panel es una hoja inferior
+    const padding = single
+      ? (mobile
+        ? { top: 70, bottom: Math.round(stage.clientHeight * .5), left: 30, right: 30 }
+        : { top: 90, bottom: 60, left: 380, right: 60 })
+      : { top: 90, bottom: 60, left: 60, right: 60 };
+    map.fitBounds(bounds, { padding, maxZoom: 15, duration: 700 });
   }
   renderMapPanel();
 }

@@ -64,7 +64,7 @@ Y abrir <http://localhost:8080>. Para tener modo sin conexión e instalación co
 4. En **Mapa**, filtra por día y abre la ruta en Google Maps.
 5. Antes de salir: menú **⋯ → Guardar mapa sin conexión** y repasa **Antes del viaje** y **Equipaje**.
 
-Al abrirla por primera vez se carga un viaje de ejemplo (Kioto) para que veas todo en acción; puedes eliminarlo desde el menú ⋯.
+Al abrirla por primera vez se carga un viaje de ejemplo (Pekín) para que veas todo en acción; puedes eliminarlo desde el menú ⋯.
 
 ## 🛠️ Tecnología
 
