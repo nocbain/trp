@@ -13,6 +13,10 @@ Aplicación web para organizar viajes al estilo Wanderlog, pero **sin cuentas, s
 - Panel de **💡 Ideas**: guarda sitios sin asignar y arrástralos a un día cuando decidas.
 - **Medidor de carga por día**: suma la duración de las actividades más una estimación de los trayectos entre puntos (a pie hasta ~2 km, transporte para más) y lo califica como *Relajado · Equilibrado · Intenso · Excesivo*, con horas totales y kilómetros. Así ves de un vistazo si el día es mucho o poco.
 - Entre actividad y actividad se muestra el **trayecto estimado** (distancia, minutos y modo).
+- Cada actividad muestra su franja horaria (inicio–fin) y hay un botón para **ordenar el día por hora**; al crear actividades se sugiere una duración típica según la categoría.
+- **Cuenta atrás** del viaje en la cabecera e insignia **HOY** en el día actual (lista y calendario).
+- **El tiempo por día** (Open-Meteo, sin clave) cuando el viaje está dentro del rango de pronóstico (~16 días).
+- Eliminar una actividad ofrece **Deshacer** durante unos segundos.
 
 ### 🗺️ Mapa
 - **Pantalla completa**, con controles flotantes de vidrio.

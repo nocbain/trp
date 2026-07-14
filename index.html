@@ -193,6 +193,11 @@
       </div>
       <button class="btn btn-primary" id="btnAddPrep"><svg class="ic"><use href="#i-plus"/></svg><span>Tarea</span></button>
     </div>
+    <form id="prepForm" class="add-inline" hidden>
+      <input type="text" id="prepText" placeholder="Nueva tarea… (visado, seguro, cambiar moneda)" maxlength="140" required>
+      <input type="date" id="prepDue" title="Fecha límite (opcional)">
+      <button type="submit" class="btn btn-primary">Añadir</button>
+    </form>
     <div class="progress-line"><div class="progress-fill" id="prepProgress"></div></div>
     <ul class="check-list" id="prepList"></ul>
     <div class="notes-block">
@@ -213,6 +218,12 @@
         <button class="btn btn-primary" id="btnAddPacking"><svg class="ic"><use href="#i-plus"/></svg><span>Añadir</span></button>
       </div>
     </div>
+    <form id="packForm" class="add-inline" hidden>
+      <input type="text" id="packText" placeholder="¿Qué hay que meter en la maleta?" maxlength="140" required>
+      <input type="text" id="packCat" list="packCatList" placeholder="Categoría" maxlength="40">
+      <datalist id="packCatList"></datalist>
+      <button type="submit" class="btn btn-primary">Añadir</button>
+    </form>
     <div class="progress-line"><div class="progress-fill" id="packingProgress"></div></div>
     <div id="packingGroups"></div>
   </section>

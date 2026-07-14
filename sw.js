@@ -5,7 +5,7 @@
      manual de "Guardar mapa sin conexión". */
 "use strict";
 
-const SHELL_CACHE = "voyage-shell-v4";
+const SHELL_CACHE = "voyage-shell-v5";
 const TILE_CACHE = "voyage-tiles-v1";
 const SHELL = [
   "./",

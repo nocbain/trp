@@ -18,11 +18,35 @@ function toast(msg, ms = 3200) {
   clearTimeout(toast._t);
   toast._t = setTimeout(() => { t.hidden = true; }, ms);
 }
+/* toast con botón de acción (p. ej. «Deshacer») */
+function toastWithAction(msg, label, fn, ms = 6000) {
+  const t = $("#toast");
+  t.textContent = "";
+  t.append(msg + " ");
+  const btn = document.createElement("button");
+  btn.className = "toast-action";
+  btn.textContent = label;
+  btn.addEventListener("click", () => { t.hidden = true; clearTimeout(toast._t); fn(); });
+  t.append(btn);
+  t.hidden = false;
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { t.hidden = true; }, ms);
+}
 
 function fmtDate(iso, opts = { weekday: "long", day: "numeric", month: "long" }) {
   if (!iso) return "";
   const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("es-ES", opts);
+  const s = new Date(y, m - 1, d).toLocaleDateString("es-ES", opts);
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function endTime(time, durationMin) {
+  const [h, m] = time.split(":").map(Number);
+  const total = h * 60 + m + Number(durationMin);
+  return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 function addDays(iso, n) {
   const [y, m, d] = iso.split("-").map(Number);
@@ -59,6 +83,12 @@ const CATS = {
   other:      { emoji: "📌", label: "Otro" },
 };
 const DAY_COLORS = ["#0d5c63", "#e76f51", "#7b2d8b", "#c9a227", "#2a6fbb", "#2a9d5c", "#b23a48", "#5f6caf", "#8a5a2b", "#3f7f7f"];
+/* duración típica por categoría: se sugiere al crear una actividad */
+const DEFAULT_DUR = {
+  sight: 90, nature: 60, museum: 120, food: 90, cafe: 30, shopping: 60,
+  show: 120, hotel: 30, flight: 180, train: 120, transport: 45,
+  beach: 150, nightlife: 120, other: 60,
+};
 
 /* ── Estado ──────────────────────────────────────────────── */
 const STORE_KEY = "voyage.state.v1";
@@ -284,9 +314,68 @@ function renderTripSelect() {
   const t = trip();
   $("#tripTitle").textContent = t.name;
   const n = t.days.length;
-  $("#tripDates").textContent =
-    `${t.destination ? t.destination + " · " : ""}${fmtDate(t.start, { day: "numeric", month: "short" })} – ${fmtDate(t.end, { day: "numeric", month: "short", year: "numeric" })} · ${n} día${n > 1 ? "s" : ""}`;
+  const today = todayISO();
+  let countdown = "";
+  if (today < t.start) {
+    const d = daysBetween(today, t.start);
+    countdown = `<span class="trip-countdown">${d === 1 ? "¡Mañana!" : `Faltan ${d} días`}</span>`;
+  } else if (today <= t.end) {
+    countdown = `<span class="trip-countdown live">✈ De viaje · día ${daysBetween(t.start, today) + 1} de ${n}</span>`;
+  }
+  $("#tripDates").innerHTML =
+    `${esc(t.destination ? t.destination + " · " : "")}${fmtDate(t.start, { day: "numeric", month: "short" })} – ${fmtDate(t.end, { day: "numeric", month: "short", year: "numeric" })} · ${n} día${n > 1 ? "s" : ""} ${countdown}`;
   $("#tripNotes").value = t.notes || "";
+}
+
+/* ── El tiempo (Open-Meteo, sin clave) ───────────────────── */
+/* Pronóstico diario si el viaje cae dentro de la ventana de ~16 días
+   de Open-Meteo; si no (viaje lejano, sin conexión, sin puntos con
+   ubicación), simplemente no se muestra nada. */
+let weather = { tripId: null, requested: false, byDate: {} };
+function wmoEmoji(code) {
+  if (code === 0) return "☀️";
+  if (code <= 2) return "🌤️";
+  if (code === 3) return "☁️";
+  if (code <= 48) return "🌫️";
+  if (code <= 57) return "🌦️";
+  if (code <= 67) return "🌧️";
+  if (code <= 77) return "🌨️";
+  if (code <= 82) return "🌧️";
+  if (code <= 86) return "🌨️";
+  return "⛈️";
+}
+async function ensureWeather() {
+  const t = trip();
+  if (weather.tripId === t.id && weather.requested) return;
+  weather = { tripId: t.id, requested: true, byDate: {} };
+  const pts = geoItems("all");
+  if (!pts.length || !navigator.onLine) return;
+  const key = "voyage.weather." + t.id;
+  try {
+    const cached = JSON.parse(localStorage.getItem(key));
+    if (cached && Date.now() - cached.ts < 3 * 3600e3) {
+      weather.byDate = cached.byDate;
+      if (ui.tab === "itinerary") renderItinerary();
+      return;
+    }
+  } catch { /* sin caché */ }
+  try {
+    const p = pts[0].it;
+    const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${p.lat}&longitude=${p.lng}&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&start_date=${t.start}&end_date=${t.end}`);
+    if (!res.ok) return; // fechas fuera del rango de pronóstico
+    const d = await res.json();
+    const byDate = {};
+    (d.daily?.time || []).forEach((date, i) => {
+      byDate[date] = {
+        code: d.daily.weather_code[i],
+        max: Math.round(d.daily.temperature_2m_max[i]),
+        min: Math.round(d.daily.temperature_2m_min[i]),
+      };
+    });
+    weather.byDate = byDate;
+    localStorage.setItem(key, JSON.stringify({ ts: Date.now(), byDate }));
+    if (ui.tab === "itinerary") renderItinerary();
+  } catch { /* sin conexión: silencio */ }
 }
 
 /* ── Itinerario ──────────────────────────────────────────── */
@@ -310,7 +399,7 @@ function activityCardHTML(it, dayIdx, itemIdx) {
       ${it.notes ? `<div class="a-notes">${esc(it.notes)}</div>` : ""}
     </div>
     <div class="a-side">
-      ${it.time ? `<span class="a-time">${esc(it.time)}</span>` : ""}
+      ${it.time ? `<span class="a-time">${esc(it.time)}${it.duration ? `<em>–${endTime(it.time, it.duration)}</em>` : ""}</span>` : ""}
       ${bookChip}
     </div>
   </article>`;
@@ -330,12 +419,15 @@ function dayCardHTML(di) {
   const loadDetail = day.items.length
     ? `${fmtDur(Math.round(st.activeMin))} de actividades · ${fmtDur(Math.round(st.travelMin)) || "0 min"} de trayectos · ${st.km.toFixed(1)} km`
     : "Añade actividades o arrastra ideas aquí";
+  const isToday = day.date === todayISO();
+  const w = weather.tripId === t.id ? weather.byDate[day.date] : null;
+  const canSort = day.items.filter(it => it.time).length >= 2;
   return `
-  <section class="day-card" data-day="${di}">
+  <section class="day-card ${isToday ? "today" : ""}" data-day="${di}">
     <header class="day-head">
       <span class="day-num" style="background:${color}">${di + 1}</span>
       <div class="day-title">
-        <h3>${fmtDate(day.date)}</h3>
+        <h3>${fmtDate(day.date)}${isToday ? '<span class="today-pill">HOY</span>' : ""}${w ? `<span class="day-weather" title="Pronóstico">${wmoEmoji(w.code)} ${w.max}°<em>/${w.min}°</em></span>` : ""}</h3>
         <span class="small">${loadDetail}</span>
       </div>
       <div class="day-load" title="Estimación: tiempo de actividades + trayectos">
@@ -343,12 +435,13 @@ function dayCardHTML(di) {
         <span class="load-pill load-${st.rating.cls}">${st.rating.label}${day.items.length ? " · " + (st.totalMin / 60).toFixed(1) + " h" : ""}</span>
       </div>
       <div class="day-route-btns">
+        ${canSort ? `<button class="btn btn-icon" data-act="sort-day" data-day="${di}" title="Ordenar las actividades por hora">${ic("clock")}</button>` : ""}
         <button class="btn btn-icon" data-act="add-to-day" data-day="${di}" title="Añadir actividad a este día">${ic("plus")}</button>
         <button class="btn btn-soft" data-act="gmaps-day" data-day="${di}" title="Abrir ruta del día en Google Maps">${ic("external")} Ruta</button>
       </div>
     </header>
     <div class="day-body drop-zone" data-day="${di}">
-      ${itemsHTML || '<div class="day-empty">Día libre — arrastra actividades aquí</div>'}
+      ${itemsHTML || `<div class="day-empty">Día libre — arrastra actividades aquí o <button type="button" class="link-btn" data-act="add-to-day" data-day="${di}">añade la primera</button></div>`}
     </div>
   </section>`;
 }
@@ -370,6 +463,7 @@ function renderItinerary() {
   }
   bindDnD();
   bindActivityClicks();
+  ensureWeather();
 }
 
 /* ── Vista de calendario mensual ─────────────────────────── */
@@ -418,8 +512,9 @@ function renderCalendar() {
       const st = dayStats(day);
       const color = DAY_COLORS[di % DAY_COLORS.length];
       const selected = di === ui.selectedDayIdx;
+      const isToday = iso === todayISO();
       cells.push(`
-      <button type="button" class="cal-cell in-trip drop-zone ${selected ? "selected" : ""}" data-day="${di}" data-cal-day="${di}" title="Día ${di + 1} · ${fmtDate(iso)}">
+      <button type="button" class="cal-cell in-trip drop-zone ${selected ? "selected" : ""} ${isToday ? "today" : ""}" data-day="${di}" data-cal-day="${di}" title="Día ${di + 1} · ${fmtDate(iso)}">
         <span class="cal-daynum">${d}</span>
         <span class="cal-daylabel">Día ${di + 1}</span>
         ${day.items.length ? `<span class="cal-count" style="background:${color}">${day.items.length}</span>` : ""}
@@ -515,6 +610,14 @@ function bindActivityClicks() {
   });
   $$("[data-act='gmaps-day']").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); openGmaps(routePoints(Number(b.dataset.day))); }));
   $$("[data-act='add-to-day']").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); openActivityModal(null, { day: b.dataset.day }); }));
+  $$("[data-act='sort-day']").forEach(b => b.addEventListener("click", e => {
+    e.stopPropagation();
+    const day = trip().days[Number(b.dataset.day)];
+    day.items.sort((a, x) => (a.time || "99:99").localeCompare(x.time || "99:99"));
+    save();
+    renderAll();
+    toast("Día ordenado por hora ✓");
+  }));
 }
 
 /* ── Reservas ────────────────────────────────────────────── */
@@ -601,6 +704,8 @@ function renderPacking() {
   $("#packingProgress").style.width = t.packing.length ? (done / t.packing.length * 100) + "%" : "0";
   const groups = {};
   t.packing.forEach(p => { (groups[p.cat || "Otros"] ||= []).push(p); });
+  const catSet = new Set([...PACKING_TEMPLATE.map(([c]) => c), ...Object.keys(groups)]);
+  $("#packCatList").innerHTML = [...catSet].map(c => `<option value="${esc(c)}">`).join("");
   $("#packingGroups").innerHTML = Object.keys(groups).length ? Object.entries(groups).map(([cat, items]) => `
     <div class="pack-group">
       <h3>${esc(cat)} <span class="count">${items.filter(i => i.done).length}/${items.length}</span></h3>
@@ -644,14 +749,37 @@ function renderBudget() {
     <div class="budget-tile"><div class="label">Media por día</div><div class="value">${fmtMoney(t.days.length ? total / t.days.length : 0)}</div></div>
     <div class="budget-tile"><div class="label">Ya reservado</div><div class="value">${fmtMoney(booked)}</div></div>
     <div class="budget-tile"><div class="label">Conceptos con coste</div><div class="value">${count}</div></div>`;
+  // desglose por categoría
+  const byCat = {};
+  const addCat = it => {
+    const c = Number(it.cost) || 0;
+    if (!c) return;
+    const k = it.cat in CATS ? it.cat : "other";
+    byCat[k] = (byCat[k] || { count: 0, cost: 0 });
+    byCat[k].count++; byCat[k].cost += c;
+  };
+  t.days.forEach(d => d.items.forEach(addCat));
+  t.ideas.forEach(addCat);
+  const catRows = Object.entries(byCat).sort((a, b) => b[1].cost - a[1].cost);
+
   $("#budgetTableWrap").innerHTML = `
-    <table class="budget-table">
-      <thead><tr><th>Día</th><th>Actividades</th><th style="text-align:right">Coste</th></tr></thead>
-      <tbody>
-        ${rows.map(r => `<tr><td>${r.label}</td><td>${r.count}</td><td class="num">${fmtMoney(r.cost)}</td></tr>`).join("")}
-        <tr><td><strong>Total</strong></td><td></td><td class="num"><strong>${fmtMoney(grandTotal)}</strong></td></tr>
-      </tbody>
-    </table>`;
+    <div class="budget-tables">
+      <table class="budget-table">
+        <thead><tr><th>Día</th><th>Actividades</th><th style="text-align:right">Coste</th></tr></thead>
+        <tbody>
+          ${rows.map(r => `<tr><td>${r.label}</td><td>${r.count}</td><td class="num">${fmtMoney(r.cost)}</td></tr>`).join("")}
+          <tr><td><strong>Total</strong></td><td></td><td class="num"><strong>${fmtMoney(grandTotal)}</strong></td></tr>
+        </tbody>
+      </table>
+      <table class="budget-table">
+        <thead><tr><th>Categoría</th><th>Conceptos</th><th style="text-align:right">Coste</th></tr></thead>
+        <tbody>
+          ${catRows.length ? catRows.map(([k, v]) =>
+            `<tr><td>${CATS[k].emoji} ${CATS[k].label}</td><td>${v.count}</td><td class="num">${fmtMoney(v.cost)}</td></tr>`).join("")
+            : `<tr><td colspan="3" class="muted">Apunta costes en las actividades para ver el desglose.</td></tr>`}
+        </tbody>
+      </table>
+    </div>`;
 }
 
 /* ── Mapa (MapLibre GL + OpenFreeMap) ────────────────────── */
@@ -997,6 +1125,7 @@ async function openActivityModal(id = null, presets = {}) {
   fillCategorySelect();
   fillDaySelect();
   attachState = { existing: [], added: [], removed: [] };
+  ui.durTouched = !!id; // en edición nunca se pisa la duración guardada
   if (id) {
     try { attachState.existing = await FDB.byAct(id) || []; } catch { attachState.existing = []; }
   }
@@ -1631,16 +1760,31 @@ function bindGlobal() {
   $("#btnAddIdea").addEventListener("click", () => openActivityModal(null, { day: "ideas" }));
   $("#btnAddBooking").addEventListener("click", () => openActivityModal(null, { day: "ideas", booking: true }));
   $("#activityForm").addEventListener("submit", saveActivityFromForm);
+  let undoFileTimer = null;
   $("#btnDeleteActivity").addEventListener("click", () => {
     if (!ui.editingId) return;
     const found = findActivity(ui.editingId);
-    if (found && confirm("¿Eliminar esta actividad? Sus documentos adjuntos también se borrarán.")) {
-      FDB.delByAct(ui.editingId).catch(() => {});
-      found.list.splice(found.idx, 1);
-      save(); closeModals(); renderAll();
-    }
+    if (!found) return;
+    const [removed] = found.list.splice(found.idx, 1);
+    const ctx = { item: removed, key: found.key, idx: found.idx };
+    save(); closeModals(); renderAll();
+    // los adjuntos se borran solo cuando expira la opción de deshacer
+    clearTimeout(undoFileTimer);
+    undoFileTimer = setTimeout(() => FDB.delByAct(removed.id).catch(() => {}), 6500);
+    toastWithAction(`«${removed.title}» eliminada.`, "Deshacer", () => {
+      clearTimeout(undoFileTimer);
+      const list = listFor(ctx.key);
+      list.splice(Math.min(ctx.idx, list.length), 0, ctx.item);
+      save(); renderAll();
+    });
   });
   $("#fIsBooking").addEventListener("change", e => { $("#bookingFields").hidden = !e.target.checked; });
+  // sugerir duración típica al cambiar de categoría (solo en actividades nuevas
+  // y mientras el usuario no haya tocado el campo)
+  $("#fDuration").addEventListener("input", () => { ui.durTouched = true; });
+  $("#fCategory").addEventListener("change", e => {
+    if (!ui.editingId && !ui.durTouched) $("#fDuration").value = DEFAULT_DUR[e.target.value] ?? 60;
+  });
 
   // adjuntos
   $("#btnAttach").addEventListener("click", () => $("#fFiles").click());
@@ -1679,20 +1823,35 @@ function bindGlobal() {
     notesTimer = setTimeout(() => { trip().notes = e.target.value; save(); }, 400);
   });
 
-  // antes del viaje / equipaje
+  // antes del viaje / equipaje: formularios inline
   $("#btnAddPrep").addEventListener("click", () => {
-    const text = prompt("Nueva tarea previa al viaje:");
-    if (!text?.trim()) return;
-    const due = prompt("¿Fecha límite? (AAAA-MM-DD, opcional)") || "";
-    trip().prep.push({ id: uid(), text: text.trim(), done: false, due: /^\d{4}-\d{2}-\d{2}$/.test(due.trim()) ? due.trim() : "" });
+    const f = $("#prepForm");
+    f.hidden = !f.hidden;
+    if (!f.hidden) $("#prepText").focus();
+  });
+  $("#prepForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const text = $("#prepText").value.trim();
+    if (!text) return;
+    trip().prep.push({ id: uid(), text, done: false, due: $("#prepDue").value || "" });
+    $("#prepText").value = "";
+    $("#prepDue").value = "";
     save(); renderPrep();
+    $("#prepText").focus(); // encadenar varias tareas seguidas
   });
   $("#btnAddPacking").addEventListener("click", () => {
-    const text = prompt("¿Qué hay que meter en la maleta?");
-    if (!text?.trim()) return;
-    const cat = prompt("Categoría (Documentos, Ropa, Electrónica, Aseo, Otros):", "Otros") || "Otros";
-    trip().packing.push({ id: uid(), text: text.trim(), done: false, cat: cat.trim() || "Otros" });
+    const f = $("#packForm");
+    f.hidden = !f.hidden;
+    if (!f.hidden) $("#packText").focus();
+  });
+  $("#packForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const text = $("#packText").value.trim();
+    if (!text) return;
+    trip().packing.push({ id: uid(), text, done: false, cat: $("#packCat").value.trim() || "Otros" });
+    $("#packText").value = "";
     save(); renderPacking();
+    $("#packText").focus();
   });
   $("#btnPackingTemplate").addEventListener("click", () => {
     const t = trip();
