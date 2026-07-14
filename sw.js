@@ -5,7 +5,7 @@
      manual de "Guardar mapa sin conexión". */
 "use strict";
 
-const SHELL_CACHE = "voyage-shell-v5";
+const SHELL_CACHE = "voyage-shell-v6";
 const TILE_CACHE = "voyage-tiles-v1";
 const SHELL = [
   "./",
@@ -58,15 +58,18 @@ self.addEventListener("fetch", e => {
     return;
   }
 
-  // Shell de la app: cache-first con actualización en segundo plano.
+  // Shell de la app: SIEMPRE la versión precacheada completa, sin
+  // actualizar archivos sueltos en segundo plano. Así nunca se mezclan
+  // el index.html de una versión con el app.js de otra: las
+  // actualizaciones llegan solo como una versión nueva atómica
+  // (nuevo SHELL_CACHE precacheado en install y activado de golpe).
   if (url.origin === location.origin) {
     e.respondWith(
       caches.open(SHELL_CACHE).then(async cache => {
         const hit = await cache.match(e.request);
-        const refresh = fetch(e.request)
-          .then(res => { if (res.ok) cache.put(e.request, res.clone()); return res; })
-          .catch(() => null);
-        return hit || refresh.then(r => r || caches.match("./index.html"));
+        if (hit) return hit;
+        try { return await fetch(e.request); }
+        catch { return (await cache.match("./index.html")) || new Response("", { status: 503 }); }
       })
     );
     return;

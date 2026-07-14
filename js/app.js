@@ -909,12 +909,24 @@ function ensureMap() {
     map.on("mouseleave", "stops-circle", () => { map.getCanvas().style.cursor = ""; });
     ui.map = map;
     return map;
-  })();
+  })().catch(err => {
+    // si la inicialización falla (red, WebGL…), permitir reintentar en
+    // el siguiente clic en vez de dejar el mapa inutilizado para siempre
+    ui.mapPromise = null;
+    mapStylePromise = null;
+    throw err;
+  });
   return ui.mapPromise;
 }
 
 async function refreshMap() {
-  const map = await ensureMap();
+  let map;
+  try {
+    map = await ensureMap();
+  } catch {
+    toast("No se pudo iniciar el mapa. Comprueba la conexión y vuelve a intentarlo.");
+    return;
+  }
   requestAnimationFrame(() => map.resize());
 
   const pts = geoItems(ui.mapDayFilter);
@@ -959,7 +971,8 @@ async function refreshMap() {
         ? { top: 70, bottom: Math.round(stage.clientHeight * .5), left: 30, right: 30 }
         : { top: 90, bottom: 60, left: 380, right: 60 })
       : { top: 90, bottom: 60, left: 60, right: 60 };
-    map.fitBounds(bounds, { padding, maxZoom: 15, duration: 700 });
+    try { map.fitBounds(bounds, { padding, maxZoom: 15, duration: 700 }); }
+    catch { try { map.fitBounds(bounds, { padding: 40, maxZoom: 15 }); } catch { /* contenedor aún sin medida */ } }
   }
   renderMapPanel();
 }
@@ -1175,7 +1188,10 @@ function ensureMiniMap() {
     mm.on("click", e => setEditingLoc(e.lngLat.lat, e.lngLat.lng));
     ui.miniMap = mm;
     return mm;
-  })();
+  })().catch(err => {
+    ui.miniMapPromise = null;
+    throw err;
+  });
   return ui.miniMapPromise;
 }
 
@@ -1871,9 +1887,19 @@ function bindGlobal() {
 
 /* ── Service worker ──────────────────────────────────────── */
 function registerSW() {
-  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-    navigator.serviceWorker.register("sw.js").catch(() => { /* file:// o navegador antiguo */ });
-  }
+  if (!("serviceWorker" in navigator) || !location.protocol.startsWith("http")) return;
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register("sw.js")
+    .then(reg => reg.update().catch(() => {}))
+    .catch(() => { /* file:// o navegador antiguo */ });
+  // cuando se activa una versión nueva de la app, recargar una vez para
+  // que el usuario nunca se quede con una versión vieja o mezclada
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloaded || !hadController) return;
+    reloaded = true;
+    location.reload();
+  });
 }
 
 /* ── Arranque ────────────────────────────────────────────── */
