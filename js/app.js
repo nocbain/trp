@@ -101,7 +101,12 @@ function newTrip(name, destination, start, end) {
   };
 }
 
-function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+let applyingRemote = false; // evita re-subir lo que acaba de bajar del sync
+function save() {
+  if (!applyingRemote) state.updatedAt = Date.now();
+  localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  if (!applyingRemote) scheduleAutoSync();
+}
 function load() {
   try { state = JSON.parse(localStorage.getItem(STORE_KEY)); } catch { state = null; }
   if (!state || !Array.isArray(state.trips) || !state.trips.length) {
@@ -112,6 +117,63 @@ function load() {
   if (!state.trips.some(t => t.id === state.activeTripId)) state.activeTripId = state.trips[0].id;
 }
 function trip() { return state.trips.find(t => t.id === state.activeTripId); }
+
+/* ── Archivos adjuntos (IndexedDB) ───────────────────────── */
+/* localStorage se queda corto para PDFs y fotos: los adjuntos de las
+   reservas viven en IndexedDB como blobs, indexados por actividad. */
+const FDB = {
+  _db: null,
+  open() {
+    this._p ||= new Promise((res, rej) => {
+      const req = indexedDB.open("voyage-files", 1);
+      req.onupgradeneeded = () => {
+        const store = req.result.createObjectStore("files", { keyPath: "id" });
+        store.createIndex("actId", "actId");
+      };
+      req.onsuccess = () => { this._db = req.result; res(this._db); };
+      req.onerror = () => rej(req.error);
+    });
+    return this._p;
+  },
+  async _tx(mode, fn) {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const tx = db.transaction("files", mode);
+      const out = fn(tx.objectStore("files"));
+      tx.oncomplete = () => res(out.result !== undefined ? out.result : out._results);
+      tx.onerror = () => rej(tx.error);
+    });
+  },
+  put(rec) { return this._tx("readwrite", s => s.put(rec)); },
+  del(id) { return this._tx("readwrite", s => s.delete(id)); },
+  byAct(actId) { return this._tx("readonly", s => s.index("actId").getAll(actId)); },
+  all() { return this._tx("readonly", s => s.getAll()); },
+  clear() { return this._tx("readwrite", s => s.clear()); },
+  async delByAct(actId) {
+    const recs = await this.byAct(actId);
+    for (const r of recs) await this.del(r.id);
+  },
+};
+const fmtSize = b => b > 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
+const blobToDataUrl = blob => new Promise((res, rej) => {
+  const r = new FileReader();
+  r.onload = () => res(r.result);
+  r.onerror = () => rej(r.error);
+  r.readAsDataURL(blob);
+});
+const dataUrlToBlob = async url => (await fetch(url)).blob();
+function openFileRec(rec) {
+  const url = URL.createObjectURL(rec.blob);
+  window.open(url, "_blank");
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+/* ids de todas las actividades de un viaje (para limpiar adjuntos) */
+function tripActivityIds(t) {
+  const ids = [];
+  t.days.forEach(d => d.items.forEach(it => ids.push(it.id)));
+  t.ideas.forEach(it => ids.push(it.id));
+  return ids;
+}
 
 /* ── Viaje de ejemplo ────────────────────────────────────── */
 function seedTrip() {
@@ -463,11 +525,16 @@ function allBookings() {
   t.ideas.forEach(it => { if (it.booking) out.push({ it, when: null, dayIdx: null }); });
   return out;
 }
-function renderBookings() {
+async function renderBookings() {
   const list = allBookings();
   $("#badgeBookings").textContent = list.length || "";
+  let filesByAct = {};
+  try {
+    (await FDB.all()).forEach(r => (filesByAct[r.actId] ||= []).push(r));
+  } catch { filesByAct = {}; }
   $("#bookingsList").innerHTML = list.length ? list.map(({ it, when, dayIdx }) => {
     const cat = CATS[it.cat] || CATS.other;
+    const files = filesByAct[it.id] || [];
     return `
     <div class="booking-card ${it.booking.confirmed ? "" : "pending"}" data-id="${it.id}">
       <div class="booking-top">
@@ -481,9 +548,19 @@ function renderBookings() {
         ${when ? `<span>${ic("calendar")} Día ${dayIdx + 1} · ${fmtDate(when, { day: "numeric", month: "short" })}${it.time ? " · " + esc(it.time) : ""}</span>` : `<span>${ic("calendar")} Sin fecha asignada</span>`}
         ${it.cost ? `<span>${ic("euro")} ${fmtMoney(it.cost)}</span>` : ""}
       </div>
+      ${files.length ? `<div class="booking-files">${files.map(f =>
+        `<button type="button" class="file-chip" data-file="${f.id}" title="Abrir ${esc(f.name)}">${ic("clip")} ${esc(f.name)}</button>`).join("")}</div>` : ""}
     </div>`;
   }).join("") : `<div class="empty-state">Aún no hay reservas. Marca «Es una reserva» en cualquier actividad, o añade una desde aquí.</div>`;
-  $$("#bookingsList .booking-card").forEach(c => c.addEventListener("click", () => openActivityModal(c.dataset.id)));
+  $$("#bookingsList .booking-card").forEach(c => c.addEventListener("click", e => {
+    if (e.target.closest(".file-chip")) return;
+    openActivityModal(c.dataset.id);
+  }));
+  $$("#bookingsList .file-chip").forEach(chip => chip.addEventListener("click", async () => {
+    const all = Object.values(filesByAct).flat();
+    const rec = all.find(r => r.id === chip.dataset.file);
+    if (rec) openFileRec(rec);
+  }));
 }
 
 /* ── Antes del viaje ─────────────────────────────────────── */
@@ -874,11 +951,56 @@ function fillDaySelect() {
     t.days.map((d, i) => `<option value="${i}">Día ${i + 1} · ${fmtDate(d.date, { day: "numeric", month: "short" })}</option>`).join("");
 }
 
-function openActivityModal(id = null, presets = {}) {
+/* estado temporal de adjuntos del modal (se confirma al guardar) */
+let attachState = { existing: [], added: [], removed: [] };
+
+function renderAttachList() {
+  const list = $("#attachList");
+  const rows = [];
+  attachState.existing.filter(r => !attachState.removed.includes(r.id)).forEach(r => {
+    rows.push(`
+    <div class="attach-item" data-kind="existing" data-id="${r.id}">
+      ${ic("file")}<button type="button" class="attach-name" title="Abrir">${esc(r.name)}</button>
+      <span class="attach-size">${fmtSize(r.size)}</span>
+      <button type="button" class="btn btn-icon attach-del" title="Quitar">${ic("trash")}</button>
+    </div>`);
+  });
+  attachState.added.forEach((f, i) => {
+    rows.push(`
+    <div class="attach-item is-new" data-kind="new" data-i="${i}">
+      ${ic("file")}<button type="button" class="attach-name" title="Abrir">${esc(f.name)}</button>
+      <span class="attach-size">${fmtSize(f.size)} · nuevo</span>
+      <button type="button" class="btn btn-icon attach-del" title="Quitar">${ic("trash")}</button>
+    </div>`);
+  });
+  list.innerHTML = rows.join("") || `<p class="muted small attach-empty">Sin documentos adjuntos.</p>`;
+  $$(".attach-item", list).forEach(el => {
+    $(".attach-name", el).addEventListener("click", () => {
+      if (el.dataset.kind === "existing") {
+        const rec = attachState.existing.find(r => r.id === el.dataset.id);
+        if (rec) openFileRec(rec);
+      } else {
+        openFileRec({ blob: attachState.added[Number(el.dataset.i)] });
+      }
+    });
+    $(".attach-del", el).addEventListener("click", () => {
+      if (el.dataset.kind === "existing") attachState.removed.push(el.dataset.id);
+      else attachState.added.splice(Number(el.dataset.i), 1);
+      renderAttachList();
+    });
+  });
+}
+
+async function openActivityModal(id = null, presets = {}) {
   ui.editingId = id;
   const modal = $("#activityModal");
   fillCategorySelect();
   fillDaySelect();
+  attachState = { existing: [], added: [], removed: [] };
+  if (id) {
+    try { attachState.existing = await FDB.byAct(id) || []; } catch { attachState.existing = []; }
+  }
+  renderAttachList();
   let it, key = presets.day ?? "ideas";
   if (id) {
     const found = findActivity(id);
@@ -988,7 +1110,7 @@ async function geocode() {
   }
 }
 
-function saveActivityFromForm(e) {
+async function saveActivityFromForm(e) {
   e.preventDefault();
   const data = {
     title: $("#fTitle").value.trim(),
@@ -1007,6 +1129,7 @@ function saveActivityFromForm(e) {
     } : null,
   };
   const targetKey = $("#fDay").value;
+  let actId = ui.editingId;
   if (ui.editingId) {
     const found = findActivity(ui.editingId);
     if (found) {
@@ -1014,7 +1137,17 @@ function saveActivityFromForm(e) {
       if (found.key !== targetKey) moveActivity(ui.editingId, targetKey, listFor(targetKey).length);
     }
   } else {
-    listFor(targetKey).push(newActivity(data));
+    const item = newActivity(data);
+    listFor(targetKey).push(item);
+    actId = item.id;
+  }
+  // confirmar cambios de adjuntos
+  try {
+    for (const id of attachState.removed) await FDB.del(id);
+    for (const f of attachState.added)
+      await FDB.put({ id: uid(), actId, name: f.name, type: f.type, size: f.size, blob: f, addedAt: Date.now() });
+  } catch {
+    toast("⚠️ No se pudieron guardar los adjuntos en este navegador.");
   }
   save();
   closeModals();
@@ -1063,24 +1196,47 @@ function saveTripFromForm(e) {
 }
 
 /* ── Exportar / importar JSON ────────────────────────────── */
-function exportJson() {
+async function exportJson() {
   const t = trip();
-  const blob = new Blob([JSON.stringify(t, null, 2)], { type: "application/json" });
+  const payload = structuredClone(t);
+  // adjuntos del viaje, en base64, para que la copia sea completa
+  try {
+    const ids = new Set(tripActivityIds(t));
+    const files = (await FDB.all()).filter(r => ids.has(r.actId));
+    payload.__files = [];
+    for (const r of files)
+      payload.__files.push({ actId: r.actId, name: r.name, type: r.type, size: r.size, dataUrl: await blobToDataUrl(r.blob) });
+  } catch { /* sin IndexedDB: se exporta sin adjuntos */ }
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = `voyage-${t.name.replace(/\W+/g, "-").toLowerCase()}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
-  toast("Copia exportada ⬇️ Guárdala como respaldo.");
+  toast("Copia exportada ⬇️ Incluye la documentación adjunta.");
 }
 function importJson(file) {
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     try {
       const t = JSON.parse(reader.result);
       if (!t || !Array.isArray(t.days)) throw new Error("formato");
+      const files = t.__files || [];
+      delete t.__files;
       t.id = uid();
       t.name = (t.name || "Viaje importado") + " (importado)";
+      // regenerar ids de actividades para no chocar con las existentes
+      const idMap = {};
+      const remap = it => { const n = uid(); idMap[it.id] = n; it.id = n; };
+      t.days.forEach(d => d.items.forEach(remap));
+      (t.ideas || []).forEach(remap);
+      for (const f of files) {
+        const actId = idMap[f.actId];
+        if (!actId) continue;
+        try {
+          await FDB.put({ id: uid(), actId, name: f.name, type: f.type, size: f.size, blob: await dataUrlToBlob(f.dataUrl), addedAt: Date.now() });
+        } catch { /* adjunto ilegible: se omite */ }
+      }
       state.trips.push(t);
       state.activeTripId = t.id;
       save();
@@ -1091,6 +1247,172 @@ function importJson(file) {
     }
   };
   reader.readAsText(file);
+}
+
+/* ── Sincronización entre dispositivos (Gist de GitHub) ──── */
+/* Todos los viajes (y sus adjuntos) se guardan como JSON en un Gist
+   privado de la cuenta del usuario. Estrategia: el conjunto completo
+   con marca de tiempo; al sincronizar gana el más reciente. La
+   configuración (token, id del gist) es local a cada dispositivo. */
+const SYNC_FILE = "voyage-sync.json";
+const SYNC_MAX_BYTES = 9 * 1048576; // margen bajo el límite de la API de gists
+const SYNC_CFG = {
+  get token() { return localStorage.getItem("voyage.sync.token") || ""; },
+  set token(v) { v ? localStorage.setItem("voyage.sync.token", v) : localStorage.removeItem("voyage.sync.token"); },
+  get gistId() { return localStorage.getItem("voyage.sync.gist") || ""; },
+  set gistId(v) { v ? localStorage.setItem("voyage.sync.gist", v) : localStorage.removeItem("voyage.sync.gist"); },
+  get auto() { return localStorage.getItem("voyage.sync.auto") !== "0"; },
+  set auto(v) { localStorage.setItem("voyage.sync.auto", v ? "1" : "0"); },
+  get lastSync() { return Number(localStorage.getItem("voyage.sync.last")) || 0; },
+  set lastSync(v) { localStorage.setItem("voyage.sync.last", String(v)); },
+};
+const syncEnabled = () => !!(SYNC_CFG.token && SYNC_CFG.gistId);
+
+async function gh(path, opts = {}) {
+  const res = await fetch("https://api.github.com" + path, {
+    ...opts,
+    headers: {
+      "Authorization": "Bearer " + SYNC_CFG.token,
+      "Accept": "application/vnd.github+json",
+      ...(opts.body ? { "Content-Type": "application/json" } : {}),
+      ...opts.headers,
+    },
+  });
+  if (!res.ok) throw new Error(`GitHub ${res.status}`);
+  return res.json();
+}
+
+async function buildSyncPayload() {
+  const payload = {
+    app: "voyage", updatedAt: state.updatedAt || Date.now(),
+    state: { version: state.version, activeTripId: state.activeTripId, trips: state.trips },
+    files: [],
+  };
+  try {
+    for (const r of await FDB.all())
+      payload.files.push({ id: r.id, actId: r.actId, name: r.name, type: r.type, size: r.size, dataUrl: await blobToDataUrl(r.blob) });
+  } catch { /* sin adjuntos */ }
+  let body = JSON.stringify(payload);
+  if (body.length > SYNC_MAX_BYTES) {
+    payload.files = [];
+    payload.filesOmitted = true;
+    body = JSON.stringify(payload);
+    toast("⚠️ Los adjuntos superan el límite del sync: los datos se sincronizan, los documentos quedan solo en este dispositivo.");
+  }
+  return body;
+}
+
+async function fetchRemotePayload() {
+  const gist = await gh(`/gists/${SYNC_CFG.gistId}`);
+  const f = gist.files && gist.files[SYNC_FILE];
+  if (!f) return null;
+  let content = f.content;
+  if (f.truncated) content = await (await fetch(f.raw_url)).text();
+  try { return JSON.parse(content); } catch { return null; }
+}
+
+async function applyRemote(remote) {
+  applyingRemote = true;
+  try {
+    state = { ...remote.state, updatedAt: remote.updatedAt };
+    if (!state.trips.some(t => t.id === state.activeTripId)) state.activeTripId = state.trips[0]?.id;
+    save();
+    if (Array.isArray(remote.files) && !remote.filesOmitted) {
+      await FDB.clear();
+      for (const f of remote.files) {
+        try {
+          await FDB.put({ id: f.id, actId: f.actId, name: f.name, type: f.type, size: f.size, blob: await dataUrlToBlob(f.dataUrl), addedAt: Date.now() });
+        } catch { /* adjunto ilegible */ }
+      }
+    }
+  } finally {
+    applyingRemote = false;
+  }
+  renderAll();
+}
+
+let syncing = false;
+async function syncNow(interactive = false) {
+  if (!syncEnabled() || syncing) return;
+  syncing = true;
+  setSyncStatus("Sincronizando…");
+  try {
+    const remote = await fetchRemotePayload();
+    if (remote && remote.updatedAt > (state.updatedAt || 0)) {
+      await applyRemote(remote);
+      setSyncStatus("✓ Actualizado desde la nube (" + new Date().toLocaleTimeString("es-ES") + ")");
+    } else {
+      await gh(`/gists/${SYNC_CFG.gistId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ files: { [SYNC_FILE]: { content: await buildSyncPayload() } } }),
+      });
+      setSyncStatus("✓ Subido a la nube (" + new Date().toLocaleTimeString("es-ES") + ")");
+    }
+    SYNC_CFG.lastSync = Date.now();
+    renderSyncUI();
+  } catch (err) {
+    setSyncStatus("⚠️ Error al sincronizar: " + err.message + (navigator.onLine ? "" : " (sin conexión)"));
+    if (interactive) toast("No se pudo sincronizar. Revisa el token y la conexión.");
+  } finally {
+    syncing = false;
+  }
+}
+
+let autoSyncTimer = null;
+function scheduleAutoSync() {
+  if (!syncEnabled() || !SYNC_CFG.auto) return;
+  clearTimeout(autoSyncTimer);
+  autoSyncTimer = setTimeout(() => syncNow(false), 4000);
+}
+
+async function syncConnect() {
+  const token = $("#syncToken").value.trim();
+  if (!token) return toast("Pega primero el token de GitHub.");
+  SYNC_CFG.token = token;
+  setSyncStatus("Conectando con GitHub…");
+  try {
+    // reutilizar un gist existente de Voyage si lo hay
+    const gists = await gh("/gists?per_page=100");
+    const existing = gists.find(g => g.files && g.files[SYNC_FILE]);
+    if (existing) {
+      SYNC_CFG.gistId = existing.id;
+      const remote = await fetchRemotePayload();
+      if (remote && remote.updatedAt > (state.updatedAt || 0)) await applyRemote(remote);
+      else await syncNow(true);
+      setSyncStatus("✓ Conectado al gist existente: tus viajes ya están sincronizados.");
+    } else {
+      const gist = await gh("/gists", {
+        method: "POST",
+        body: JSON.stringify({
+          description: "Voyage · sincronización de viajes (creado automáticamente)",
+          public: false,
+          files: { [SYNC_FILE]: { content: await buildSyncPayload() } },
+        }),
+      });
+      SYNC_CFG.gistId = gist.id;
+      SYNC_CFG.lastSync = Date.now();
+      setSyncStatus("✓ Conectado: se ha creado un gist privado con tus viajes.");
+    }
+    $("#syncToken").value = "";
+    renderSyncUI();
+  } catch (err) {
+    SYNC_CFG.token = "";
+    setSyncStatus("⚠️ No se pudo conectar: " + err.message + ". ¿El token tiene el permiso «gist»?");
+  }
+}
+
+function setSyncStatus(msg) { $("#syncStatus").textContent = msg; }
+function renderSyncUI() {
+  const on = syncEnabled();
+  $("#syncSetup").hidden = on;
+  $("#syncConnected").hidden = !on;
+  $("#syncAuto").checked = SYNC_CFG.auto;
+  $("#syncMenuState").textContent = on ? "activada" : "";
+  if (on) {
+    $("#syncInfo").innerHTML =
+      `Conectado a un gist privado de tu GitHub (<code>${esc(SYNC_CFG.gistId.slice(0, 10))}…</code>).` +
+      (SYNC_CFG.lastSync ? `<br>Última sincronización: ${new Date(SYNC_CFG.lastSync).toLocaleString("es-ES")}.` : "");
+  }
 }
 
 /* ── Mapa sin conexión (descarga de mosaicos) ────────────── */
@@ -1262,6 +1584,7 @@ function bindGlobal() {
   $("#btnDeleteTrip").addEventListener("click", () => {
     const t = trip();
     if (!confirm(`¿Eliminar el viaje «${t.name}» y todos sus datos? Esta acción no se puede deshacer.`)) return;
+    tripActivityIds(t).forEach(id => FDB.delByAct(id).catch(() => {}));
     state.trips = state.trips.filter(x => x.id !== t.id);
     if (!state.trips.length) state.trips.push(newTrip("Mi viaje", "", new Date().toISOString().slice(0, 10), addDays(new Date().toISOString().slice(0, 10), 4)));
     state.activeTripId = state.trips[0].id;
@@ -1284,6 +1607,24 @@ function bindGlobal() {
   $("#btnOfflineMap").addEventListener("click", () => { $("#moreMenu").hidden = true; openOfflineModal(); });
   $("#btnStartOffline").addEventListener("click", downloadTiles);
 
+  // sincronización
+  $("#btnSync").addEventListener("click", () => {
+    $("#moreMenu").hidden = true;
+    setSyncStatus("");
+    renderSyncUI();
+    $("#syncModal").hidden = false;
+  });
+  $("#btnSyncConnect").addEventListener("click", syncConnect);
+  $("#btnSyncNow").addEventListener("click", () => syncNow(true));
+  $("#btnSyncDisconnect").addEventListener("click", () => {
+    if (!confirm("¿Desconectar la sincronización en este dispositivo? El gist de GitHub y tus datos locales no se borran.")) return;
+    SYNC_CFG.token = "";
+    SYNC_CFG.gistId = "";
+    setSyncStatus("Desconectado.");
+    renderSyncUI();
+  });
+  $("#syncAuto").addEventListener("change", e => { SYNC_CFG.auto = e.target.checked; });
+
   // actividades
   $("#btnAddActivity").addEventListener("click", () =>
     openActivityModal(null, { day: ui.itinView === "cal" ? String(ui.selectedDayIdx) : "0" }));
@@ -1293,12 +1634,24 @@ function bindGlobal() {
   $("#btnDeleteActivity").addEventListener("click", () => {
     if (!ui.editingId) return;
     const found = findActivity(ui.editingId);
-    if (found && confirm("¿Eliminar esta actividad?")) {
+    if (found && confirm("¿Eliminar esta actividad? Sus documentos adjuntos también se borrarán.")) {
+      FDB.delByAct(ui.editingId).catch(() => {});
       found.list.splice(found.idx, 1);
       save(); closeModals(); renderAll();
     }
   });
   $("#fIsBooking").addEventListener("change", e => { $("#bookingFields").hidden = !e.target.checked; });
+
+  // adjuntos
+  $("#btnAttach").addEventListener("click", () => $("#fFiles").click());
+  $("#fFiles").addEventListener("change", e => {
+    for (const f of e.target.files) {
+      if (f.size > 5 * 1048576) { toast(`«${f.name}» supera los 5 MB y no se adjuntó.`); continue; }
+      attachState.added.push(f);
+    }
+    e.target.value = "";
+    renderAttachList();
+  });
   $("#btnGeocode").addEventListener("click", geocode);
   $("#fPlace").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); geocode(); } });
 
@@ -1369,4 +1722,6 @@ load();
 bindGlobal();
 updateNetStatus();
 renderAll();
+renderSyncUI();
 registerSW();
+if (syncEnabled()) syncNow(false); // al abrir, traer lo último de la nube

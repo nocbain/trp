@@ -30,6 +30,12 @@ Aplicación web para organizar viajes al estilo Wanderlog, pero **sin cuentas, s
 ### 🎫 Reservas
 - Cualquier actividad puede marcarse como reserva (código/localizador, proveedor, confirmada o pendiente).
 - Pestaña propia que agrupa vuelos, hoteles, trenes, entradas y restaurantes con reserva.
+- **Documentación adjunta**: sube el PDF del billete, la confirmación del hotel o una foto de la entrada (hasta 5 MB por archivo). Se guardan en el dispositivo (IndexedDB), se abren con un toque desde la tarjeta de la reserva, y viajan con las copias JSON y la sincronización.
+
+### 🔄 Sincronización entre dispositivos
+- Menú ⋯ → **Sincronizar dispositivos**: tus viajes (con adjuntos) se guardan en un **Gist privado de tu cuenta de GitHub** — gratis y sin servidores de terceros.
+- Configuración: crea un token en GitHub (*Settings → Developer settings → Personal access tokens → Tokens (classic)*) con solo el permiso `gist`, y pégalo en la app en cada dispositivo. La app encuentra o crea el gist automáticamente.
+- Sincronización automática (unos segundos después de cada cambio y al abrir la app) o manual con «Sincronizar ahora». Estrategia: gana el conjunto de datos más reciente.
 
 ### 📋 Antes del viaje
 - Checklist de trámites con fecha límite (visado, seguro, moneda…) y barra de progreso.

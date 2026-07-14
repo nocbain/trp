@@ -879,6 +879,48 @@ body.tab-map main { padding: 0; max-width: none; }
   overflow: hidden;
 }
 .booking-fieldset { border: 1px dashed var(--hairline); border-radius: var(--radius-sm); padding: 12px 15px; margin: 6px 0 0; }
+.attach-block { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--hairline); }
+.attach-label { display: block; font-size: .72rem; font-weight: 700; color: var(--ink-soft); margin-bottom: 8px; }
+.attach-list { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+.attach-empty { margin: 0 0 4px; font-style: italic; }
+.attach-item {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--glass-input);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: .82rem;
+}
+.attach-item.is-new { border-style: dashed; border-color: var(--primary); }
+.attach-item > .ic { color: var(--ink-soft); }
+.attach-name {
+  font: inherit; font-weight: 600; color: var(--primary);
+  background: none; border: none; cursor: pointer; padding: 0;
+  flex: 1; text-align: left; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.attach-name:hover { text-decoration: underline; }
+.attach-size { font-size: .7rem; color: var(--ink-faint); white-space: nowrap; }
+.attach-del { padding: 4px; }
+.attach-del .ic { width: 1em; height: 1em; }
+
+.booking-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.file-chip {
+  font: inherit; font-size: .74rem; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--tint-primary); color: var(--primary);
+  border: none; border-radius: 99px;
+  padding: 4px 11px; cursor: pointer;
+  max-width: 100%;
+  transition: filter .15s;
+}
+.file-chip:hover { filter: brightness(1.08); text-decoration: underline; }
+.file-chip .ic { width: .95em; height: .95em; flex: none; }
+
+.sync-steps { padding-left: 18px; margin: 8px 0 14px; display: flex; flex-direction: column; gap: 4px; }
+.sync-steps code { background: var(--tint-primary); padding: 1px 6px; border-radius: 6px; font-size: .78rem; }
+.menu-note { font-style: normal; font-size: .68rem; font-weight: 700; color: var(--ok); margin-left: auto; }
+#syncStatus { min-height: 1.2em; margin: 10px 0 0; font-weight: 600; }
 .switch-row { display: flex; align-items: center; gap: 9px; font-weight: 600; cursor: pointer; }
 .switch-row .ic { color: var(--gold); }
 .switch-row input { width: 17px; height: 17px; accent-color: var(--primary); }

@@ -49,6 +49,9 @@
     <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 8-2.4 5.6L8 16l2.4-5.6z"/></symbol>
     <symbol id="i-note" viewBox="0 0 24 24"><path d="M15 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10z"/><path d="M15 21v-4a2 2 0 0 1 2-2h4"/></symbol>
     <symbol id="i-wifi-off" viewBox="0 0 24 24"><path d="M12 20h.01"/><path d="M8.5 16.4a5 5 0 0 1 7 0"/><path d="M5 12.9a10 10 0 0 1 5.2-2.7M15 10.4a10 10 0 0 1 4 2.5"/><path d="M2 2l20 20"/></symbol>
+    <symbol id="i-clip" viewBox="0 0 24 24"><path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l8.57-8.57a4 4 0 1 1 5.66 5.66l-8.1 8.09a2 2 0 0 1-2.83-2.83l8.49-8.48"/></symbol>
+    <symbol id="i-sync" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15.74-6L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.74 6L3 16"/><path d="M3 21v-5h5"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></symbol>
   </defs>
 </svg>
 
@@ -77,6 +80,7 @@
         <button id="btnPrint"><svg class="ic"><use href="#i-printer"/></svg> Imprimir / PDF</button>
         <hr>
         <button id="btnOfflineMap"><svg class="ic"><use href="#i-wifi-off"/></svg> Guardar mapa sin conexión</button>
+        <button id="btnSync"><svg class="ic"><use href="#i-sync"/></svg> Sincronizar dispositivos <em class="menu-note" id="syncMenuState"></em></button>
         <hr>
         <button id="btnDeleteTrip" class="danger"><svg class="ic"><use href="#i-trash"/></svg> Eliminar viaje</button>
       </div>
@@ -288,19 +292,27 @@
           <input type="checkbox" id="fIsBooking">
           <span><svg class="ic"><use href="#i-ticket"/></svg> Es una reserva</span>
         </label>
-        <div id="bookingFields" class="field-row" hidden>
-          <label class="field">
-            <span>Código / localizador</span>
-            <input type="text" id="fBookingCode" placeholder="ABC123">
-          </label>
-          <label class="field">
-            <span>Proveedor</span>
-            <input type="text" id="fBookingProvider" placeholder="Booking, Renfe…">
-          </label>
-          <label class="switch-row confirmed-switch">
-            <input type="checkbox" id="fBookingConfirmed">
-            <span>Confirmada</span>
-          </label>
+        <div id="bookingFields" hidden>
+          <div class="field-row">
+            <label class="field">
+              <span>Código / localizador</span>
+              <input type="text" id="fBookingCode" placeholder="ABC123">
+            </label>
+            <label class="field">
+              <span>Proveedor</span>
+              <input type="text" id="fBookingProvider" placeholder="Booking, Renfe…">
+            </label>
+            <label class="switch-row confirmed-switch">
+              <input type="checkbox" id="fBookingConfirmed">
+              <span>Confirmada</span>
+            </label>
+          </div>
+          <div class="attach-block">
+            <span class="attach-label">Documentación (billetes, confirmaciones…)</span>
+            <div id="attachList" class="attach-list"></div>
+            <button type="button" class="btn btn-soft" id="btnAttach"><svg class="ic"><use href="#i-clip"/></svg><span>Adjuntar archivo</span></button>
+            <input type="file" id="fFiles" multiple accept="application/pdf,image/*,.eml" hidden>
+          </div>
         </div>
       </fieldset>
 
@@ -366,6 +378,48 @@
         <button type="button" class="btn btn-ghost" data-close>Cerrar</button>
         <button type="button" class="btn btn-primary" id="btnStartOffline"><svg class="ic"><use href="#i-download"/></svg><span>Descargar</span></button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ MODAL SINCRONIZACIÓN ══════════ -->
+<div class="modal-backdrop" id="syncModal" hidden>
+  <div class="modal modal-sm" role="dialog" aria-modal="true">
+    <div class="modal-head">
+      <h3><svg class="ic"><use href="#i-sync"/></svg> Sincronizar dispositivos</h3>
+      <button class="btn btn-icon" data-close title="Cerrar"><svg class="ic"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <div id="syncSetup">
+        <p class="small">Tus viajes se guardan en un <strong>Gist privado de tu cuenta de GitHub</strong> (gratis). Configúralo una vez en cada dispositivo con el mismo token y se mantendrán al día automáticamente.</p>
+        <ol class="small sync-steps">
+          <li>En GitHub: <em>Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token</em>.</li>
+          <li>Márcale solo el permiso <code>gist</code> y una caducidad larga.</li>
+          <li>Pega aquí el token (empieza por <code>ghp_</code>).</li>
+        </ol>
+        <label class="field">
+          <span>Token de GitHub</span>
+          <input type="password" id="syncToken" placeholder="ghp_…" autocomplete="off">
+        </label>
+        <div class="modal-foot">
+          <span class="spacer"></span>
+          <button type="button" class="btn btn-primary" id="btnSyncConnect"><svg class="ic"><use href="#i-sync"/></svg><span>Conectar</span></button>
+        </div>
+      </div>
+      <div id="syncConnected" hidden>
+        <p class="small" id="syncInfo"></p>
+        <label class="switch-row" style="margin: 10px 0">
+          <input type="checkbox" id="syncAuto" checked>
+          <span>Sincronizar automáticamente</span>
+        </label>
+        <p class="muted small">Si editas en dos dispositivos a la vez, gana el último cambio guardado (se sincroniza el conjunto completo de viajes).</p>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-danger-soft" id="btnSyncDisconnect">Desconectar</button>
+          <span class="spacer"></span>
+          <button type="button" class="btn btn-primary" id="btnSyncNow"><svg class="ic"><use href="#i-sync"/></svg><span>Sincronizar ahora</span></button>
+        </div>
+      </div>
+      <p class="small" id="syncStatus"></p>
     </div>
   </div>
 </div>
